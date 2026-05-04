@@ -84,12 +84,20 @@ const OrderBoard = () => {
     const unsubStock = onSnapshot(stockQuery, (snap) => {
       const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as StockItem));
       setStock(data);
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'stock'));
+    }, (err) => {
+      console.error("Stock snapshot error:", err);
+      setLoading(false);
+      handleFirestoreError(err, OperationType.LIST, 'stock');
+    });
 
     const unsubTemplates = onSnapshot(templatesQuery, (snap) => {
       const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FabricTemplate));
       setTemplates(data);
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'templates'));
+    }, (err) => {
+      console.error("Templates snapshot error:", err);
+      setLoading(false);
+      handleFirestoreError(err, OperationType.LIST, 'templates');
+    });
 
     return () => {
       unsubOrders();
@@ -121,7 +129,7 @@ const OrderBoard = () => {
             for (const d of tSnap.docs) await deleteDoc(d.ref);
 
             localStorage.setItem('akanni_v4_reset', 'true');
-            alert('Banco de dados reiniciado com sucesso! Tudo limpo para o novo uso.');
+            console.log('Database reset successful! Everything is clean for fresh use.');
           } catch (err) {
             console.error('Wipe Error:', err);
           }
