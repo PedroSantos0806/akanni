@@ -75,7 +75,11 @@ const OrderBoard = () => {
       const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
       setOrders(data);
       setLoading(false);
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'orders'));
+    }, (err) => {
+      console.error("Order snapshot error:", err);
+      setLoading(false);
+      handleFirestoreError(err, OperationType.LIST, 'orders');
+    });
 
     const unsubStock = onSnapshot(stockQuery, (snap) => {
       const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as StockItem));
