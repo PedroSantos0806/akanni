@@ -1,0 +1,132 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      // Relaxing for development since users are created without verification flow
+      return isSignedIn();
+    }
+
+    function getUserProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.token.email)).data;
+    }
+
+    function hasRole(role) {
+      return isSignedIn() && (
+        request.auth.token.email == 'ai.auroratech@gmail.com' || // Master Admin
+        (exists(/databases/$(database)/documents/users/$(request.auth.token.email)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.token.email)).data.role == role)
+      );
+    }
+
+    function isSuperAdmin() {
+      return hasRole('super_admin') || 
+             request.auth.token.email == 'ai.auroratech@gmail.com' || 
+             request.auth.token.email == 'pedrohenrique0806@gmail.com' ||
+             request.auth.token.email == 'pedro_santos@akanni.com';
+    }
+
+    function isAdmin() {
+      return isSuperAdmin() || hasRole('admin_geral');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // --- Entity Validations ---
+
+    function isValidTemplate(data) {
+      return data.keys().hasAll(['name', 'fabricConsumption'])
+        && data.name is string && data.name.size() <= 100
+        && data.fabricConsumption is number && data.fabricConsumption > 0;
+    }
+
+    function isValidOrder(data) {
+      return data.keys().hasAll(['customerName', 'status', 'items', 'createdAt'])
+        && data.customerName is string && data.customerName.size() <= 200
+        && (data.get('customerEmail', '') == '' || (data.customerEmail is string && data.customerEmail.size() <= 200))
+        && data.status in ['pending', 'cutting', 'sewing', 'finishing', 'delivered']
+        && data.items is list && data.items.size() > 0
+        && (resource == null ? data.createdAt == request.time : data.createdAt == existing().createdAt)
+        && data.get('isDelayed', false) is bool
+        && (data.get('designImages', []) is list && data.get('designImages', []).size() <= 6)
+        && (data.get('statusStartedAt', request.time) is timestamp)
+        && (data.get('photos', []) is list && data.get('photos', []).size() <= 20);
+    }
+
+    function isValidStockItem(data) {
+      return data.keys().hasAll(['name', 'type', 'quantity', 'unit', 'minQuantity'])
+        && data.name is string && data.name.size() <= 100
+        && data.type in ['fabric', 'buttons', 'thread', 'label', 'others']
+        && data.quantity is number && data.quantity >= 0
+        && data.unit in ['meters', 'units', 'kg']
+        && data.minQuantity is number
+        && (data.get('color', '') == '' || data.color is string);
+    }
+
+    // --- Rules ---
+
+    match /users/{userId} {
+      // Allow anyone to get a user profile by ID to check if they are authorized to register
+      allow get: if true;
+      allow list: if isSuperAdmin();
+      allow create: if isSignedIn() && (request.auth.token.email == userId || request.auth.uid == userId || isSuperAdmin());
+      allow update: if isSignedIn() && (request.auth.token.email == userId || request.auth.uid == userId || isSuperAdmin());
+      allow delete: if isSuperAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(orderId) && isValidOrder(incoming());
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        // Action: Change Status
+        (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'statusStartedAt', 'updatedAt', 'isDelayed']) && incoming().updatedAt == request.time) ||
+        // Action: Edit Details (only if not delivered)
+        (existing().status != 'delivered' && incoming().diff(existing()).affectedKeys().hasOnly(['customerName', 'customerEmail', 'items', 'deliveryDate', 'designImages', 'notes', 'photos', 'updatedAt']) && incoming().updatedAt == request.time) ||
+        // Action: Issue NF-e
+        (incoming().diff(existing()).affectedKeys().hasOnly(['nfeIssued', 'updatedAt']) && incoming().updatedAt == request.time)
+      ) && (isAdmin() || isValidOrder(incoming()));
+      allow delete: if isAdmin();
+    }
+
+    match /stock/{itemId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() && isValidId(itemId) && isValidStockItem(incoming());
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        // Action: Adjust Quantity
+        (incoming().diff(existing()).affectedKeys().hasOnly(['quantity']))
+      ) && (isAdmin() || isValidStockItem(incoming()));
+      allow delete: if isAdmin();
+    }
+
+    match /admins/{adminId} {
+      allow read: if isSignedIn();
+    }
+
+    match /templates/{templateId} {
+      allow read: if isSignedIn();
+      allow create, update: if isAdmin() && isValidTemplate(incoming());
+      allow delete: if isAdmin();
+    }
+  }
+}

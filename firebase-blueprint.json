@@ -1,0 +1,93 @@
+{
+  "entities": {
+    "StockItem": {
+      "title": "Stock Item",
+      "description": "Represents raw materials in stock such as fabric, buttons, etc.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Name of the material" },
+        "type": { "type": "string", "enum": ["fabric", "buttons", "thread", "label", "others"], "description": "Category of the item" },
+        "color": { "type": "string" },
+        "quantity": { "type": "number", "description": "Current quantity in units or meters" },
+        "unit": { "type": "string", "enum": ["meters", "units", "kg"], "description": "Measurement unit" },
+        "minQuantity": { "type": "number", "description": "Minimum quantity before manual restock alert" }
+      },
+      "required": ["name", "type", "quantity", "unit"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Represents a shirt manufacturing order.",
+      "type": "object",
+      "properties": {
+        "customerName": { "type": "string" },
+        "items": { 
+          "type": "array", 
+          "items": {
+            "type": "object",
+            "properties": {
+              "templateId": { "type": "string" },
+              "shirtType": { "type": "string" },
+              "quantity": { "type": "number" },
+              "fabricType": { "type": "string" },
+              "fabricColor": { "type": "string" },
+              "fabricUsagePerUnit": { "type": "number" },
+              "totalFabricEstimate": { "type": "number" }
+            }
+          }
+        },
+        "customerEmail": { "type": "string", "format": "email" },
+        "customerTaxId": { "type": "string" },
+        "customerAddress": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "cutting", "sewing", "finishing", "delivered"] },
+        "statusStartedAt": { "type": "string", "format": "date-time" },
+        "deliveryDate": { "type": "string", "format": "date-time" },
+        "designImages": { "type": "array", "items": { "type": "string", "description": "Base64 image data" } },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "photos": { "type": "array", "items": { "type": "string" } },
+        "isDelayed": { "type": "boolean" },
+        "nfeIssued": { "type": "boolean" }
+      },
+      "required": ["customerName", "status", "createdAt"]
+    },
+    "User": {
+      "title": "User",
+      "description": "Application user profile",
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin_geral", "gerente_producao", "gestor_geral", "funcionario_padrao"] }
+      },
+      "required": ["email"]
+    },
+    "FabricTemplate": {
+      "title": "Fabric Template",
+      "description": "Consumption templates for automatic calculation",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Template Name (e.g., Polo M, Basic XL)" },
+        "fabricConsumption": { "type": "number", "description": "Meters per unit" }
+      },
+      "required": ["name", "fabricConsumption"]
+    }
+  },
+  "firestore": {
+    "stock": {
+      "schema": "StockItem",
+      "description": "Collection of raw materials"
+    },
+    "orders": {
+      "schema": "Order",
+      "description": "Collection of production orders"
+    },
+    "users": {
+      "schema": "User",
+      "description": "User profile data"
+    },
+    "templates": {
+      "schema": "FabricTemplate",
+      "description": "Standard consumption templates"
+    }
+  }
+}

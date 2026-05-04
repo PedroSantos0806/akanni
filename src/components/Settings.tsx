@@ -1,0 +1,117 @@
+import React, { useState } from 'react';
+import { Lock, Save, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { updateUserPassword } from '../lib/firebase';
+import { motion } from 'motion/react';
+
+export const Settings = () => {
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword.length < 6) {
+      setMessage({ text: 'A senha deve ter pelo menos 6 caracteres.', type: 'error' });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setMessage({ text: 'As senhas não coincidem.', type: 'error' });
+      return;
+    }
+
+    setLoading(true);
+    setMessage(null);
+    try {
+      await updateUserPassword(newPassword);
+      setMessage({ text: 'Senha atualizada com sucesso!', type: 'success' });
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err: any) {
+      console.error(err);
+      if (err.code === 'auth/requires-recent-login') {
+        setMessage({ text: 'Por favor, saia e entre novamente para alterar sua senha por segurança.', type: 'error' });
+      } else {
+        setMessage({ text: 'Erro ao atualizar senha. Verifique sua conexão.', type: 'error' });
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto py-8">
+      <div className="bg-white rounded-3xl border border-zinc-200 overflow-hidden shadow-sm">
+        <div className="p-8 border-b border-zinc-100 bg-zinc-50/50">
+          <div className="flex items-center space-x-3 mb-2">
+            <div className="p-2 bg-zinc-900 rounded-xl text-white">
+              <Lock size={20} />
+            </div>
+            <h2 className="text-xl font-bold text-zinc-900">Segurança da Conta</h2>
+          </div>
+          <p className="text-zinc-500 text-sm">Atualize sua senha de acesso ao sistema.</p>
+        </div>
+
+        <form onSubmit={handleUpdatePassword} className="p-8 space-y-6">
+          {message && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={`p-4 rounded-2xl flex items-center space-x-3 ${
+                message.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+              }`}
+            >
+              {message.type === 'success' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
+              <span className="text-sm font-medium">{message.text}</span>
+            </motion.div>
+          )}
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-semibold text-zinc-700 mb-2">Nova Senha</label>
+              <input
+                type="password"
+                required
+                className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-zinc-900 outline-none transition-all"
+                placeholder="Mínimo 6 caracteres"
+                value={newPassword}
+                onChange={e => setNewPassword(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-zinc-700 mb-2">Confirmar Nova Senha</label>
+              <input
+                type="password"
+                required
+                className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-zinc-900 outline-none transition-all"
+                placeholder="Repita a nova senha"
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-4 bg-zinc-900 text-white rounded-2xl font-bold flex items-center justify-center hover:bg-zinc-800 transition-all disabled:opacity-50"
+          >
+            {loading ? (
+              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <>
+                <Save size={20} className="mr-2" />
+                Atualizar Senha
+              </>
+            )}
+          </button>
+          
+          <p className="text-center text-xs text-zinc-400">
+            A segurança da sua conta é importante. Escolha uma senha forte e não compartilhe com ninguém.
+          </p>
+        </form>
+      </div>
+    </div>
+  );
+};
