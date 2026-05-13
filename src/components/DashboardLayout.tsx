@@ -76,9 +76,12 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode, activeTab: s
               <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.email || 'user'}`} alt="Avatar" />
             </div>
             <div className="flex-1 overflow-hidden">
-              <p className="text-sm font-semibold truncate text-zinc-900">{profile?.displayName || 'Usuário'}</p>
-              <p className="text-[10px] uppercase font-black text-zinc-400 tracking-wider">
-                {profile?.role ? profile.role.replace('_', ' ') : 'Equipe'}
+              <p className="text-sm font-semibold truncate text-zinc-900">{profile?.displayName || 'USUÁRIO'}</p>
+              <p className="text-[10px] text-zinc-400 font-mono truncate uppercase tracking-widest">
+                {profile?.role === 'super_admin' ? 'Administrador' : 
+                 profile?.role === 'admin_geral' ? 'Gerente Geral' :
+                 profile?.role === 'gerente_producao' ? 'Produção' :
+                 profile?.role === 'gestor_geral' ? 'Gestor' : 'Equipe'}
               </p>
             </div>
           </div>

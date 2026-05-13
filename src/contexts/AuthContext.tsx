@@ -25,7 +25,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn("[Auth] Timeout - Releasing UI lock");
         setLoading(false);
       }
-    }, 4000); // 4s timeout for better experience
+    }, 6000); // 6s timeout for better experience
 
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -72,16 +72,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       console.log(`[Auth] Fetching profile for: ${currentUser.email}`);
 
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('users')
         .select('*')
         .eq('uid', currentUser.id)
         .single();
 
+      // Fallback: search by email if UID not matched
+      if (error && error.code === 'PGRST116' && currentUser.email) {
+        const { data: emailData, error: emailError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('email', currentUser.email)
+          .single();
+        
+        if (emailData) {
+          data = emailData;
+          error = null;
+          // Update UID if it was missing
+          if (!data.uid) {
+            supabase.from('users').update({ uid: currentUser.id }).eq('id', data.id).then();
+          }
+        }
+      }
+
       const isMaster = currentUser.email && [
         'ai.auroratech@gmail.com',
         'pedro_santos@akanni.com',
-        'pedrohenrique0806@gmail.com'
+        'pedrohenrique0806@gmail.com',
+        'pedro@akanni.com'
       ].includes(currentUser.email);
 
       if (error) {

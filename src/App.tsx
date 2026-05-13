@@ -191,7 +191,9 @@ const OrderBoard = () => {
     const finalPassword = password.trim();
     
     // Convert username to email if it's not already one
-    const effectiveEmail = trimmedEmail.includes('@') ? trimmedEmail : `${trimmedEmail}@akanni.com`;
+    // Also support Pedro's full name as a login identifier
+    const isPedroName = trimmedEmail === 'pedro santos' || trimmedEmail === 'pedro henrique silva dos santos';
+    const effectiveEmail = isPedroName ? 'pedro_santos@akanni.com' : (trimmedEmail.includes('@') ? trimmedEmail : `${trimmedEmail}@akanni.com`);
 
     try {
       const { data: { user: authUser }, error: signInError } = await supabase.auth.signInWithPassword({
@@ -200,6 +202,48 @@ const OrderBoard = () => {
       });
 
       if (signInError) {
+        if (signInError.message.includes('Invalid login credentials')) {
+          // Check if this is a first-time login or if we need to bootstrap the system
+          const { data: userDoc } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', effectiveEmail)
+            .single();
+
+          // Bootstrap condition: specific credentials for initial setup
+          const isBootstrapUser = (trimmedEmail === 'pedro_santos' || isPedroName || effectiveEmail === 'pedro_santos@akanni.com') && 
+                                  (finalPassword === 'Admin123' || finalPassword === 'adminakanni');
+
+          if (isBootstrapUser || (userDoc && userDoc.temp_password === finalPassword)) {
+            // Found matching record or bootstrap credentials, attempt account creation/activation
+            const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+              email: effectiveEmail,
+              password: finalPassword,
+            });
+
+            if (signUpError) {
+              if (signUpError.message.includes('already registered')) {
+                throw new Error('Usuário já registrado com outra senha. Tente redefinir sua senha.');
+              }
+              throw signUpError;
+            }
+
+            if (signUpData.user) {
+              // Successfully created Auth user, now ensure metadata exists
+              await supabase.from('users').upsert({
+                id: effectiveEmail,
+                email: effectiveEmail,
+                username: 'pedro_santos',
+                display_name: 'Pedro Santos',
+                role: 'super_admin',
+                uid: signUpData.user.id
+              });
+              
+              alert('Bem-vindo, Pedro Santos! Sistema inicializado com sucesso.');
+              return;
+            }
+          }
+        }
         throw signInError;
       }
     } catch (err: any) {
