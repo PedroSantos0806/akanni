@@ -26,22 +26,28 @@ export const UserManagement: React.FC = () => {
   };
 
   const fetchUsers = async () => {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .order('display_name');
-    if (data) {
-      setUsers(data.map((u: any) => ({
-        id: u.id,
-        uid: u.uid || u.id, // Fallback if uid is not yet set
-        username: u.username,
-        email: u.email,
-        displayName: u.display_name,
-        role: u.role,
-        tempPassword: u.temp_password
-      } as UserProfile)));
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .order('display_name');
+      if (error) throw error;
+      if (data) {
+        setUsers(data.map((u: any) => ({
+          id: u.id,
+          uid: u.uid || u.id, // Fallback if uid is not yet set
+          username: u.username,
+          email: u.email,
+          displayName: u.display_name,
+          role: u.role,
+          tempPassword: u.temp_password
+        } as UserProfile)));
+      }
+    } catch (err) {
+      console.error('Error fetching users:', err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {

@@ -47,8 +47,8 @@ export const TemplatesManager: React.FC<TemplatesManagerProps> = ({ templates, o
               type="number"
               step="0.1"
               className="w-full px-4 py-2 bg-zinc-50 border border-zinc-200 rounded-xl outline-none focus:ring-2 focus:ring-zinc-900"
-              value={Number.isNaN(newConsumption) ? '' : newConsumption}
-              onChange={(e) => setNewConsumption(parseFloat(e.target.value))}
+              value={newConsumption === 0 ? '' : newConsumption}
+              onChange={(e) => setNewConsumption(parseFloat(e.target.value) || 0)}
             />
           </div>
           <button

@@ -94,8 +94,8 @@ export const StockForm: React.FC<StockFormProps> = ({ item, onClose, onSubmit })
                 type="number"
                 required
                 className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-2xl outline-none"
-                value={formData.quantity}
-                onChange={e => setFormData({ ...formData, quantity: parseFloat(e.target.value) })}
+                value={formData.quantity === 0 ? '' : formData.quantity}
+                onChange={e => setFormData({ ...formData, quantity: parseFloat(e.target.value) || 0 })}
               />
             </div>
             <div>
@@ -118,8 +118,8 @@ export const StockForm: React.FC<StockFormProps> = ({ item, onClose, onSubmit })
               type="number"
               required
               className="w-full px-4 py-3 bg-zinc-50 border border-zinc-200 rounded-2xl outline-none"
-              value={formData.minQuantity}
-              onChange={e => setFormData({ ...formData, minQuantity: parseFloat(e.target.value) })}
+              value={formData.minQuantity === 0 ? '' : formData.minQuantity}
+              onChange={e => setFormData({ ...formData, minQuantity: parseFloat(e.target.value) || 0 })}
             />
           </div>
 

@@ -9,7 +9,7 @@ import { InventoryList } from './components/InventoryList';
 import { OrderForm } from './components/OrderForm';
 import { NfePopup } from './components/NfePopup';
 import { TemplatesManager } from './components/TemplatesManager';
-import { Plus, Loader2, LogIn, Lock, Users } from 'lucide-react';
+import { Plus, Loader2, LogIn, Lock, Users, Eye, EyeOff, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { predictDelay } from './services/aiService';
 
@@ -40,6 +40,7 @@ const OrderBoard = () => {
   // Auth state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
   // Modals state
   const [isOrderFormOpen, setIsOrderFormOpen] = useState(false);
@@ -47,32 +48,39 @@ const OrderBoard = () => {
   const [nfeOrder, setNfeOrder] = useState<Order | null>(null);
 
   const fetchOrders = async () => {
-    const { data, error } = await supabase
-      .from('orders')
-      .select('*')
-      .order('created_at', { ascending: false });
-    if (data) {
-      // Map snail_case to camelCase
-      const mapped = data.map((o: any) => ({
-        id: o.id,
-        customerName: o.customer_name,
-        customerEmail: o.customer_email,
-        customerTaxId: o.customer_tax_id,
-        customerAddress: o.customer_address,
-        status: o.status,
-        statusStartedAt: o.status_started_at,
-        items: o.items,
-        deliveryDate: o.delivery_date,
-        designImages: o.design_images,
-        createdAt: o.created_at,
-        updatedAt: o.updated_at,
-        photos: o.photos,
-        isDelayed: o.is_delayed,
-        nfeIssued: o.nfe_issued
-      } as Order));
-      setOrders(mapped);
+    try {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      if (data) {
+        // Map snail_case to camelCase
+        const mapped = data.map((o: any) => ({
+          id: o.id,
+          customerName: o.customer_name,
+          customerEmail: o.customer_email,
+          customerTaxId: o.customer_tax_id,
+          customerAddress: o.customer_address,
+          status: o.status,
+          statusStartedAt: o.status_started_at,
+          items: o.items,
+          deliveryDate: o.delivery_date,
+          designImages: o.design_images,
+          createdAt: o.created_at,
+          updatedAt: o.updated_at,
+          photos: o.photos,
+          isDelayed: o.is_delayed,
+          nfeIssued: o.nfe_issued
+        } as Order));
+        setOrders(mapped);
+      }
+    } catch (err) {
+      console.error("Error fetching orders:", err);
+      setAuthError("Erro ao conectar com o banco de dados. Verifique a configuração do Supabase.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const fetchStock = async () => {
@@ -435,13 +443,20 @@ const OrderBoard = () => {
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
                 <input 
-                  type="password" 
+                  type={showPassword ? "text" : "password"} 
                   required
                   placeholder="Sua senha"
-                  className="w-full pl-12 pr-4 py-4 bg-zinc-50 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-zinc-900 outline-none transition-all font-medium"
+                  className="w-full pl-12 pr-12 py-4 bg-zinc-50 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-zinc-900 outline-none transition-all font-medium"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 transition-colors"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
               </div>
             </div>
 

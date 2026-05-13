@@ -256,8 +256,8 @@ export const OrderForm: React.FC<OrderFormProps> = ({ templates, onClose, onSubm
                           <input
                             type="number"
                             className="w-full px-3 py-1.5 bg-white border border-zinc-200 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-zinc-900"
-                            value={Number.isNaN(item.quantity) ? '' : item.quantity}
-                            onChange={e => updateItem(idx, 'quantity', parseInt(e.target.value))}
+                            value={item.quantity === 0 ? '' : item.quantity}
+                            onChange={e => updateItem(idx, 'quantity', parseInt(e.target.value) || 0)}
                           />
                         </div>
                         <div>
