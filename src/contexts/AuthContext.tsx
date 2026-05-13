@@ -8,14 +8,44 @@ interface AuthContextType {
   profile: UserProfile | null;
   loading: boolean;
   isAdmin: boolean;
+  setManualAuth: (user: User | null, profile: UserProfile | null) => void;
+  logout: () => void;
 }
 
-const AuthContext = createContext<AuthContextType>({ user: null, profile: null, loading: true, isAdmin: false });
+const AuthContext = createContext<AuthContextType>({ 
+  user: null, 
+  profile: null, 
+  loading: true, 
+  isAdmin: false,
+  setManualAuth: () => {},
+  logout: () => {} 
+});
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const setManualAuth = (u: User | null, p: UserProfile | null) => {
+    setUser(u);
+    setProfile(p);
+    setLoading(false);
+  };
+
+  const logout = async () => {
+    setLoading(true);
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error("[Auth] SignOut error:", err);
+    } finally {
+      setUser(null);
+      setProfile(null);
+      setLoading(false);
+      // Force page reload to clear any sensitive state
+      window.location.reload();
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -144,7 +174,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, isAdmin: profile?.role === 'super_admin' || profile?.role === 'admin_geral' }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      profile, 
+      loading, 
+      isAdmin: profile?.role === 'super_admin' || profile?.role === 'admin_geral',
+      setManualAuth,
+      logout
+    }}>
       {children}
     </AuthContext.Provider>
   );

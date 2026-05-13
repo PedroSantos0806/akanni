@@ -27,7 +27,7 @@ const SidebarItem = ({ icon, label, active, onClick }: SidebarItemProps) => (
 );
 
 export const DashboardLayout: React.FC<{ children: React.ReactNode, activeTab: string, setActiveTab: (tab: string) => void }> = ({ children, activeTab, setActiveTab }) => {
-  const { user, profile } = useAuth();
+  const { user, profile, logout } = useAuth();
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(true);
 
   const menuItems = [
@@ -86,7 +86,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode, activeTab: s
             </div>
           </div>
           <button
-            onClick={() => supabase.auth.signOut()}
+            onClick={logout}
             className="w-full flex items-center space-x-3 px-4 py-3 text-red-500 hover:bg-red-50 rounded-lg transition-colors duration-200"
           >
             <LogOut size={20} />
