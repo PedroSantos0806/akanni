@@ -128,20 +128,28 @@ const OrderBoard = () => {
     const initData = async () => {
       setLoading(true);
       
-      // Timeout de segurança para evitar loading infinito
       const timer = setTimeout(() => {
-        if (mounted) setLoading(false);
-      }, 15000);
+        if (mounted) {
+          console.warn("Data fetch timeout - releasing lock");
+          setLoading(false);
+        }
+      }, 8000); // Reduced timeout to 8s for better UX
 
       try {
-        await Promise.all([
+        // Parallel fetch but individual catch to avoid total failure
+        const [oRes, sRes, tRes] = await Promise.allSettled([
           fetchOrders(),
           fetchStock(),
           fetchTemplates()
         ]);
+
+        if (oRes.status === 'rejected') console.error("Orders load failed", oRes.reason);
+        if (sRes.status === 'rejected') console.error("Stock load failed", sRes.reason);
+        if (tRes.status === 'rejected') console.error("Templates load failed", tRes.reason);
+
         clearTimeout(timer);
       } catch (err) {
-        console.error("Erro no carregamento paralelo:", err);
+        console.error("Critical init error:", err);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -182,12 +190,8 @@ const OrderBoard = () => {
     const trimmedEmail = email.trim().toLowerCase();
     const finalPassword = password.trim();
     
-    const isNewPedro = trimmedEmail === 'pedrohenrique0806@gmail.com' || 
-                       trimmedEmail === 'pedro_santos' || 
-                       trimmedEmail === 'pedro santos' || 
-                       trimmedEmail === 'pedro henrique' ||
-                       trimmedEmail === 'pedro';
-    const effectiveEmail = isNewPedro ? (trimmedEmail.includes('@') ? trimmedEmail : 'pedrohenrique0806@gmail.com') : (trimmedEmail.includes('@') ? trimmedEmail : `${trimmedEmail}@akanni.com`);
+    // Convert username to email if it's not already one
+    const effectiveEmail = trimmedEmail.includes('@') ? trimmedEmail : `${trimmedEmail}@akanni.com`;
 
     try {
       const { data: { user: authUser }, error: signInError } = await supabase.auth.signInWithPassword({
@@ -196,49 +200,6 @@ const OrderBoard = () => {
       });
 
       if (signInError) {
-        if (signInError.message.includes('Invalid login credentials') || signInError.message.includes('Email not confirmed')) {
-          // If login fails, check if user exists in our 'users' table to allow bootstrap/registration
-          const { data: userDoc } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', effectiveEmail)
-            .single();
-
-          const isMaster = effectiveEmail === 'ai.auroratech@gmail.com';
-
-          if (userDoc || isNewPedro || isMaster) {
-            // Check for Pedro's specific bootstrap passwords
-            if (isNewPedro && !userDoc && finalPassword !== 'adminakanni' && finalPassword !== 'Admin123') {
-              setAuthError('Senha de ativação incorreta para o administrador. Use a senha definida no script.');
-              return;
-            }
-
-            // Custom password check if temp_password is set in DB
-            if (userDoc?.temp_password && finalPassword !== userDoc.temp_password) {
-                setAuthError('Senha de ativação incorreta.');
-                return;
-            }
-
-            const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-              email: effectiveEmail,
-              password: finalPassword,
-            });
-
-            if (signUpError) throw signUpError;
-
-            if (signUpData.user) {
-              await supabase.from('users').upsert({
-                id: effectiveEmail,
-                email: effectiveEmail,
-                username: isNewPedro ? 'pedro santos' : (userDoc?.username || effectiveEmail.split('@')[0]),
-                display_name: isNewPedro ? 'Pedro Santos' : (userDoc?.display_name || effectiveEmail.split('@')[0]),
-                role: (isNewPedro || isMaster) ? 'super_admin' : (userDoc?.role || 'funcionario_padrao'),
-                uid: signUpData.user.id
-              });
-            }
-            return;
-          }
-        }
         throw signInError;
       }
     } catch (err: any) {

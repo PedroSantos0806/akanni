@@ -59,22 +59,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const fetchProfile = async (currentUser: User) => {
     try {
-      const isMaster = currentUser.email === 'ai.auroratech@gmail.com' || 
-                      currentUser.email === 'pedro_santos@akanni.com' || 
-                      currentUser.email === 'pedrohenrique0806@gmail.com';
-
-      const cacheKey = `profile_${currentUser.id}`;
-      const cached = localStorage.getItem(cacheKey);
-      
-      if (cached) {
-        const cachedProfile = JSON.parse(cached);
-        // Se for mestre, garante o cargo mestre no cache também
-        if (isMaster) cachedProfile.role = 'super_admin';
-        setProfile(cachedProfile);
-        setLoading(false);
-      }
-
-      console.log(`Buscando perfil para: ${currentUser.email} (Mestre: ${isMaster})`);
+      console.log(`Buscando perfil para: ${currentUser.email}`);
 
       let { data, error } = await supabase
         .from('users')
@@ -97,36 +82,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           uid: data.uid || currentUser.id,
           displayName: data.display_name || data.username || '',
           email: data.email,
-          role: isMaster ? 'super_admin' : data.role
+          role: data.role
         };
         setProfile(newProfile);
-        localStorage.setItem(cacheKey, JSON.stringify(newProfile));
         console.log("Perfil carregado do banco:", newProfile.role);
-      } else if (isMaster) {
-        const mProfile: UserProfile = {
-          id: currentUser.email || currentUser.id,
-          uid: currentUser.id,
-          displayName: 'Administrador Mestre',
-          email: currentUser.email!,
-          role: 'super_admin'
-        };
-        setProfile(mProfile);
-        localStorage.setItem(cacheKey, JSON.stringify(mProfile));
-        
-        // Auto-provisionamento silencioso
-        supabase.from('users').upsert({
-          id: currentUser.email || currentUser.id,
-          email: currentUser.email,
-          display_name: 'Administrador Mestre',
-          role: 'super_admin',
-          uid: currentUser.id
-        }).then(() => console.log("Perfil mestre provisionado."));
       } else {
-        console.warn("Perfil não encontrado no banco e não é mestre.");
+        console.warn("Perfil não encontrado no banco.");
+        // If profile doesn't exist, we don't automatically create one here anymore
+        // to avoid "ghost account" behavior. The admin should create it in User Management.
         setProfile(null);
       }
     } catch (err) {
       console.error("Erro no fetchProfile:", err);
+      setProfile(null);
     } finally {
       setLoading(false);
     }
