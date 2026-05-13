@@ -206,7 +206,46 @@ const OrderBoard = () => {
             role: userDoc.role
           };
           
-          setManualAuth({ id: manualProfile.uid, email: manualProfile.email } as any, manualProfile as any);
+          // CRITICAL: Try to create a real Supabase session so RLS and Password Update work
+          try {
+            const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+              email: manualProfile.email,
+              password: finalPassword,
+            });
+            
+            // If user already exists, this might error or return a user
+            if (signUpError && !signUpError.message.includes('already registered')) {
+               console.warn("[Auth] SignUp notice:", signUpError.message);
+            }
+          } catch (signUpErr) {
+            // Ignore signup errors (e.g. user already exists)
+          }
+
+          const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
+            email: manualProfile.email,
+            password: finalPassword,
+          });
+
+          if (authData.user) {
+            // Update the UID in our table to match the real Auth UID
+            await supabase.from('users').update({ 
+               uid: authData.user.id,
+               temp_password: finalPassword // Maintain the current password
+             }).eq('id', userDoc.id);
+            
+            setManualAuth(authData.user, manualProfile as any);
+            console.log("[Auth] Session synced for:", manualProfile.email);
+          } else {
+            // Check for unconfirmed email
+            if (signInError?.message.includes('Email not confirmed')) {
+               // We still proceed with Manual Auth but warn that RLS features might be limited
+               console.warn("[Auth] Email not confirmed, using manual fallback");
+               setManualAuth({ id: manualProfile.uid, email: manualProfile.email } as any, manualProfile as any);
+            } else {
+               throw signInError || new Error("Erro na autenticação de segurança.");
+            }
+          }
+          
           return;
         } else {
           throw new Error('Senha incorreta para este usuário.');
