@@ -17,7 +17,7 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({ orders, stock }) =
 
     const totalActiveUnits = orders
       .filter(o => o.status !== 'delivered')
-      .reduce((acc, o) => acc + o.items.reduce((sum, i) => sum + i.quantity, 0), 0);
+      .reduce((acc, o) => acc + (Array.isArray(o.items) ? o.items.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0) : 0), 0);
 
     return [
       { label: 'Unidades Ativas', value: totalActiveUnits, icon: <Package className="text-blue-500" />, trend: '+12% este mês' },

@@ -18,14 +18,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Fallback: Garantir que o loading não dure para sempre se o Supabase não responder
+    const timeout = setTimeout(() => {
+      if (loading) {
+        console.warn("Supabase Auth timeout: Carregamento forçado após 10s.");
+        setLoading(false);
+      }
+    }, 10000);
+
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      clearTimeout(timeout);
       setUser(session?.user ?? null);
       if (session?.user) {
         fetchProfile(session.user);
       } else {
         setLoading(false);
       }
+    }).catch(err => {
+      console.error("Erro ao obter sessão inicial:", err);
+      setLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
@@ -47,15 +59,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const fetchProfile = async (currentUser: User) => {
     try {
-      const { data, error } = await supabase
+      // Tentar buscar por UID primeiro (mais seguro), depois por email
+      let { data, error } = await supabase
         .from('users')
         .select('*')
-        .eq('id', currentUser.email || currentUser.id)
+        .eq('uid', currentUser.id)
         .single();
+
+      if (!data && currentUser.email) {
+        const { data: emailData } = await supabase
+          .from('users')
+          .select('*')
+          .eq('email', currentUser.email)
+          .single();
+        data = emailData;
+      }
 
       if (data) {
         setProfile({
-          uid: currentUser.id,
+          id: data.id,
+          uid: data.uid || currentUser.id,
           displayName: data.display_name || data.username || '',
           email: data.email,
           role: data.role
@@ -75,13 +98,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             role: 'super_admin'
           };
           
-          await supabase.from('users').insert({
+          const { error: insertError } = await supabase.from('users').insert({
             id: currentUser.email || currentUser.id,
             email: currentUser.email,
             display_name: 'Pedro Santos',
             role: 'super_admin',
             uid: currentUser.id
           });
+          
+          if (insertError) {
+            console.error("Erro ao criar perfil mestre:", insertError);
+            // Mesmo se falhar o insert, tentamos deixar o usuário entrar localmente
+          }
           
           setProfile(newProfile);
         } else {

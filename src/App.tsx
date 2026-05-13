@@ -22,7 +22,7 @@ const DraggableComponent = Draggable as any;
 const DroppableComponent = Droppable as any;
 
 const OrderBoard = () => {
-  const { user, profile } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState('orders');
 
   useEffect(() => {
@@ -58,20 +58,24 @@ const OrderBoard = () => {
         // Map snail_case to camelCase
         const mapped = data.map((o: any) => ({
           id: o.id,
-          customerName: o.customer_name,
-          customerEmail: o.customer_email,
-          customerTaxId: o.customer_tax_id,
-          customerAddress: o.customer_address,
-          status: o.status,
-          statusStartedAt: o.status_started_at,
-          items: o.items,
-          deliveryDate: o.delivery_date,
-          designImages: o.design_images,
+          customerName: o.customer_name || 'Sem Nome',
+          customerEmail: o.customer_email || '',
+          customerTaxId: o.customer_tax_id || '',
+          customerAddress: o.customer_address || '',
+          status: o.status || 'pending',
+          statusStartedAt: o.status_started_at || new Date().toISOString(),
+          items: Array.isArray(o.items) ? o.items.map((i: any) => ({
+            ...i,
+            quantity: Number(i.quantity) || 0,
+            totalFabricEstimate: Number(i.totalFabricEstimate) || 0
+          })) : [],
+          deliveryDate: o.delivery_date || new Date().toISOString(),
+          designImages: Array.isArray(o.design_images) ? o.design_images : [],
           createdAt: o.created_at,
           updatedAt: o.updated_at,
-          photos: o.photos,
-          isDelayed: o.is_delayed,
-          nfeIssued: o.nfe_issued
+          photos: Array.isArray(o.photos) ? o.photos : [],
+          isDelayed: !!o.is_delayed,
+          nfeIssued: !!o.nfe_issued
         } as Order));
         setOrders(mapped);
       }
@@ -84,28 +88,38 @@ const OrderBoard = () => {
   };
 
   const fetchStock = async () => {
-    const { data } = await supabase.from('stock').select('*').order('name');
-    if (data) {
-      setStock(data.map((s: any) => ({
-        id: s.id,
-        name: s.name,
-        type: s.type,
-        color: s.color,
-        quantity: s.quantity,
-        unit: s.unit,
-        minQuantity: s.min_quantity
-      } as StockItem)));
+    try {
+      const { data, error } = await supabase.from('stock').select('*').order('name');
+      if (error) throw error;
+      if (data) {
+        setStock(data.map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          type: s.type,
+          color: s.color,
+          quantity: s.quantity,
+          unit: s.unit,
+          minQuantity: s.min_quantity
+        } as StockItem)));
+      }
+    } catch (err) {
+      console.error("Error fetching stock:", err);
     }
   };
 
   const fetchTemplates = async () => {
-    const { data } = await supabase.from('templates').select('*').order('name');
-    if (data) {
-      setTemplates(data.map((t: any) => ({
-        id: t.id,
-        name: t.name,
-        fabricConsumption: t.fabric_consumption
-      } as FabricTemplate)));
+    try {
+      const { data, error } = await supabase.from('templates').select('*').order('name');
+      if (error) throw error;
+      if (data) {
+        setTemplates(data.map((t: any) => ({
+          id: t.id,
+          name: t.name,
+          fabricConsumption: t.fabric_consumption
+        } as FabricTemplate)));
+      }
+    } catch (err) {
+      console.error("Error fetching templates:", err);
     }
   };
 
@@ -281,28 +295,34 @@ const OrderBoard = () => {
 
   const handleCreateOrder = async (orderData: Partial<Order>) => {
     try {
+      if (!user) throw new Error("Usuário não autenticado");
+
       const payload = {
         customer_name: orderData.customerName,
         customer_email: orderData.customerEmail,
-        customer_tax_id: orderData.customerTaxId,
-        customer_address: orderData.customerAddress,
-        items: orderData.items,
+        customer_tax_id: orderData.customerTaxId || '',
+        customer_address: orderData.customerAddress || '',
+        items: (orderData.items || []).map(i => ({
+            ...i,
+            quantity: Number(i.quantity) || 0,
+            totalFabricEstimate: Number(i.totalFabricEstimate) || 0
+        })),
         status: orderData.status || 'pending',
         delivery_date: orderData.deliveryDate,
         design_images: orderData.designImages || [],
         photos: orderData.photos || [],
-        is_delayed: orderData.isDelayed || false,
-        nfe_issued: orderData.nfeIssued || false
+        is_delayed: !!orderData.isDelayed,
+        nfe_issued: !!orderData.nfeIssued
       };
 
       if (editingOrder) {
-        await supabase.from('orders').update(payload).eq('id', editingOrder.id);
+        const { error } = await supabase.from('orders').update(payload).eq('id', editingOrder.id);
+        if (error) throw error;
         setEditingOrder(null);
         setIsOrderFormOpen(false);
         return;
       }
 
-      // Supabase transaction equivalent (using RPC or separate calls - simple approach for now)
       const { data: newOrder, error: orderError } = await supabase
         .from('orders')
         .insert({
@@ -313,27 +333,11 @@ const OrderBoard = () => {
         .single();
 
       if (orderError) throw orderError;
-
-      // Update stock quantities
-      if (orderData.items) {
-        for (const item of orderData.items) {
-          const fabric = stock.find(s => 
-            s.type === 'fabric' && 
-            s.name === item.fabricType && 
-            (!item.fabricColor || s.color === item.fabricColor)
-          );
-
-          if (fabric && item.totalFabricEstimate) {
-            await supabase.from('stock')
-              .update({ quantity: fabric.quantity - item.totalFabricEstimate })
-              .eq('id', fabric.id);
-          }
-        }
-      }
       
       setIsOrderFormOpen(false);
-    } catch (err) {
-      console.error("Order creation failed", err);
+    } catch (err: any) {
+      console.error("Order operation failed", err);
+      alert("Erro ao salvar pedido: " + (err.message || "Verifique sua conexão ou permissões."));
     }
   };
 
@@ -415,6 +419,17 @@ const OrderBoard = () => {
     { title: 'Despachado', status: 'delivered' },
   ];
 
+  if (authLoading) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-zinc-50">
+        <div className="flex flex-col items-center">
+          <Loader2 className="animate-spin text-zinc-900 mb-4" size={48} />
+          <p className="text-zinc-500 font-medium animate-pulse">Autenticando...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!user) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-zinc-50 p-4">
@@ -489,8 +504,19 @@ const OrderBoard = () => {
 
   if (loading) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-white">
-        <Loader2 className="animate-spin text-zinc-900" size={48} />
+      <div className="h-screen w-full flex items-center justify-center bg-white p-4">
+        <div className="max-w-sm w-full text-center">
+          <Loader2 className="animate-spin text-zinc-900 mx-auto mb-6" size={48} />
+          <h2 className="text-xl font-bold text-zinc-900 mb-2">Carregando Dados</h2>
+          <p className="text-zinc-500">Isso pode levar alguns segundos se a conexão estiver lenta.</p>
+          
+          <button 
+            onClick={() => window.location.reload()}
+            className="mt-8 text-zinc-400 text-xs font-bold uppercase tracking-widest hover:text-zinc-900 transition-colors"
+          >
+            Tentar recarregar página
+          </button>
+        </div>
       </div>
     );
   }
