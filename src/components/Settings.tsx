@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Lock, Save, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { updateUserPassword } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { motion } from 'motion/react';
 
 export const Settings = () => {
@@ -23,17 +23,14 @@ export const Settings = () => {
     setLoading(true);
     setMessage(null);
     try {
-      await updateUserPassword(newPassword);
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
       setMessage({ text: 'Senha atualizada com sucesso!', type: 'success' });
       setNewPassword('');
       setConfirmPassword('');
     } catch (err: any) {
       console.error(err);
-      if (err.code === 'auth/requires-recent-login') {
-        setMessage({ text: 'Por favor, saia e entre novamente para alterar sua senha por segurança.', type: 'error' });
-      } else {
-        setMessage({ text: 'Erro ao atualizar senha. Verifique sua conexão.', type: 'error' });
-      }
+      setMessage({ text: 'Erro ao atualizar senha: ' + (err.message || 'Verifique sua conexão.'), type: 'error' });
     } finally {
       setLoading(false);
     }

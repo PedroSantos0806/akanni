@@ -1,23 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  collection, 
-  query, 
-  onSnapshot, 
-  updateDoc, 
-  setDoc,
-  doc, 
-  addDoc, 
-  deleteDoc, 
-  getDocs,
-  getDoc,
-  where,
-  increment,
-  runTransaction,
-  serverTimestamp
-} from 'firebase/firestore';
-import { db, loginEmail, registerEmail, auth } from './lib/firebase';
-import { sendPasswordResetEmail } from 'firebase/auth';
-import { handleFirestoreError, OperationType } from './lib/firestore-errors';
+import { supabase } from './lib/supabase';
 import { Order, OrderStatus, StockItem, FabricTemplate } from './types';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { DashboardLayout } from './components/DashboardLayout';
@@ -27,7 +9,7 @@ import { InventoryList } from './components/InventoryList';
 import { OrderForm } from './components/OrderForm';
 import { NfePopup } from './components/NfePopup';
 import { TemplatesManager } from './components/TemplatesManager';
-import { Plus, Loader2, LogIn, Mail, Lock } from 'lucide-react';
+import { Plus, Loader2, LogIn, Lock, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { predictDelay } from './services/aiService';
 
@@ -64,79 +46,86 @@ const OrderBoard = () => {
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [nfeOrder, setNfeOrder] = useState<Order | null>(null);
 
+  const fetchOrders = async () => {
+    const { data, error } = await supabase
+      .from('orders')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (data) {
+      // Map snail_case to camelCase
+      const mapped = data.map((o: any) => ({
+        id: o.id,
+        customerName: o.customer_name,
+        customerEmail: o.customer_email,
+        customerTaxId: o.customer_tax_id,
+        customerAddress: o.customer_address,
+        status: o.status,
+        statusStartedAt: o.status_started_at,
+        items: o.items,
+        deliveryDate: o.delivery_date,
+        designImages: o.design_images,
+        createdAt: o.created_at,
+        updatedAt: o.updated_at,
+        photos: o.photos,
+        isDelayed: o.is_delayed,
+        nfeIssued: o.nfe_issued
+      } as Order));
+      setOrders(mapped);
+    }
+    setLoading(false);
+  };
+
+  const fetchStock = async () => {
+    const { data } = await supabase.from('stock').select('*').order('name');
+    if (data) {
+      setStock(data.map((s: any) => ({
+        id: s.id,
+        name: s.name,
+        type: s.type,
+        color: s.color,
+        quantity: s.quantity,
+        unit: s.unit,
+        minQuantity: s.min_quantity
+      } as StockItem)));
+    }
+  };
+
+  const fetchTemplates = async () => {
+    const { data } = await supabase.from('templates').select('*').order('name');
+    if (data) {
+      setTemplates(data.map((t: any) => ({
+        id: t.id,
+        name: t.name,
+        fabricConsumption: t.fabric_consumption
+      } as FabricTemplate)));
+    }
+  };
+
   useEffect(() => {
     if (!user) return;
 
-    const ordersQuery = query(collection(db, 'orders'));
-    const stockQuery = query(collection(db, 'stock'));
-    const templatesQuery = query(collection(db, 'templates'));
+    fetchOrders();
+    fetchStock();
+    fetchTemplates();
 
-    const unsubOrders = onSnapshot(ordersQuery, (snap) => {
-      const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
-      setOrders(data);
-      setLoading(false);
-    }, (err) => {
-      console.error("Order snapshot error:", err);
-      setLoading(false);
-      handleFirestoreError(err, OperationType.LIST, 'orders');
-    });
+    // Set up Real-time subscriptions
+    const ordersChannel = supabase.channel('orders-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchOrders)
+      .subscribe();
+    
+    const stockChannel = supabase.channel('stock-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'stock' }, fetchStock)
+      .subscribe();
 
-    const unsubStock = onSnapshot(stockQuery, (snap) => {
-      const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as StockItem));
-      setStock(data);
-    }, (err) => {
-      console.error("Stock snapshot error:", err);
-      setLoading(false);
-      handleFirestoreError(err, OperationType.LIST, 'stock');
-    });
-
-    const unsubTemplates = onSnapshot(templatesQuery, (snap) => {
-      const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FabricTemplate));
-      setTemplates(data);
-    }, (err) => {
-      console.error("Templates snapshot error:", err);
-      setLoading(false);
-      handleFirestoreError(err, OperationType.LIST, 'templates');
-    });
+    const templatesChannel = supabase.channel('templates-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'templates' }, fetchTemplates)
+      .subscribe();
 
     return () => {
-      unsubOrders();
-      unsubStock();
-      unsubTemplates();
+      supabase.removeChannel(ordersChannel);
+      supabase.removeChannel(stockChannel);
+      supabase.removeChannel(templatesChannel);
     };
-  }, [user]);
-
-  useEffect(() => {
-    if (user && (user.email === 'pedrohenrique0806@gmail.com' || user.email === 'ai.auroratech@gmail.com')) {
-      const hasWiped = localStorage.getItem('akanni_v4_reset');
-      if (!hasWiped) {
-        const wipeAll = async () => {
-          try {
-            console.log('Starting total database reset...');
-            // Users (except self)
-            const uSnap = await getDocs(collection(db, 'users'));
-            for (const d of uSnap.docs) {
-              if (d.id !== user.email && d.data().email !== user.email) await deleteDoc(d.ref);
-            }
-            // Stock
-            const sSnap = await getDocs(collection(db, 'stock'));
-            for (const d of sSnap.docs) await deleteDoc(d.ref);
-            // Orders
-            const oSnap = await getDocs(collection(db, 'orders'));
-            for (const d of oSnap.docs) await deleteDoc(d.ref);
-            // Templates
-            const tSnap = await getDocs(collection(db, 'templates'));
-            for (const d of tSnap.docs) await deleteDoc(d.ref);
-
-            localStorage.setItem('akanni_v4_reset', 'true');
-            console.log('Database reset successful! Everything is clean for fresh use.');
-          } catch (err) {
-            console.error('Wipe Error:', err);
-          }
-        };
-        wipeAll();
-      }
-    }
   }, [user]);
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -151,73 +140,79 @@ const OrderBoard = () => {
     const trimmedEmail = email.trim().toLowerCase();
     const finalPassword = password.trim();
     
-    // Master Admin Login Logic
     const isNewPedro = trimmedEmail === 'pedrohenrique0806@gmail.com' || 
+                       trimmedEmail === 'pedro_santos' || 
                        trimmedEmail === 'pedro santos' || 
-                       trimmedEmail === 'pedro henrique';
-    const effectiveEmail = isNewPedro ? 'pedrohenrique0806@gmail.com' : (trimmedEmail.includes('@') ? trimmedEmail : `${trimmedEmail}@akanni.com`);
+                       trimmedEmail === 'pedro henrique' ||
+                       trimmedEmail === 'pedro';
+    const effectiveEmail = isNewPedro ? (trimmedEmail.includes('@') ? trimmedEmail : 'pedrohenrique0806@gmail.com') : (trimmedEmail.includes('@') ? trimmedEmail : `${trimmedEmail}@akanni.com`);
 
     try {
-      // 1. Try to Login
-      try {
-        await loginEmail(effectiveEmail, finalPassword);
-      } catch (loginErr: any) {
-        // 2. If login fails (user might not exist in Auth yet)
-        if (loginErr.code === 'auth/user-not-found' || loginErr.code === 'auth/invalid-credential') {
-          
+      const { data: { user: authUser }, error: signInError } = await supabase.auth.signInWithPassword({
+        email: effectiveEmail,
+        password: finalPassword,
+      });
+
+      if (signInError) {
+        if (signInError.message.includes('Invalid login credentials') || signInError.message.includes('Email not confirmed')) {
+          // If login fails, check if user exists in our 'users' table to allow bootstrap/registration
+          const { data: userDoc } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', effectiveEmail)
+            .single();
+
           const isMaster = effectiveEmail === 'ai.auroratech@gmail.com';
-          const userDoc = await getDoc(doc(db, 'users', effectiveEmail));
 
-          // Authorization: Pre-authorized in Firestore OR Master Accounts
-          if (userDoc.exists() || isNewPedro || isMaster) {
-            
-            // Initial Activation Password for Pedro
-            if (isNewPedro && !userDoc.exists() && finalPassword !== 'adminakanni') {
-              setAuthError('Senha de ativação incorreta para o administrador.');
+          if (userDoc || isNewPedro || isMaster) {
+            // Check for Pedro's specific bootstrap passwords
+            if (isNewPedro && !userDoc && finalPassword !== 'adminakanni' && finalPassword !== 'Admin123') {
+              setAuthError('Senha de ativação incorreta para o administrador. Use a senha definida no script.');
               return;
             }
 
-            if (finalPassword.length < 6) {
-              setAuthError('Escolha uma senha de no mínimo 6 caracteres.');
-              return;
-            }
-
-            try {
-              const res = await registerEmail(effectiveEmail, finalPassword);
-              const userRef = doc(db, 'users', effectiveEmail);
-              
-              await setDoc(userRef, {
-                uid: res.user.uid,
-                email: effectiveEmail,
-                username: isNewPedro ? 'pedro santos' : (userDoc.data()?.username || effectiveEmail.split('@')[0]),
-                displayName: isNewPedro ? 'Pedro Santos' : (userDoc.data()?.displayName || effectiveEmail.split('@')[0]),
-                role: (isNewPedro || isMaster) ? 'super_admin' : (userDoc.data()?.role || 'funcionario_padrao'),
-                updatedAt: serverTimestamp()
-              }, { merge: true });
-              
-              return; 
-            } catch (regErr: any) {
-              if (regErr.code === 'auth/email-already-in-use') {
-                setAuthError('Usuário já ativado. Verifique sua senha.');
+            // Custom password check if temp_password is set in DB
+            if (userDoc?.temp_password && finalPassword !== userDoc.temp_password) {
+                setAuthError('Senha de ativação incorreta.');
                 return;
-              }
-              throw regErr;
             }
+
+            const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+              email: effectiveEmail,
+              password: finalPassword,
+            });
+
+            if (signUpError) throw signUpError;
+
+            if (signUpData.user) {
+              await supabase.from('users').upsert({
+                id: effectiveEmail,
+                email: effectiveEmail,
+                username: isNewPedro ? 'pedro santos' : (userDoc?.username || effectiveEmail.split('@')[0]),
+                display_name: isNewPedro ? 'Pedro Santos' : (userDoc?.display_name || effectiveEmail.split('@')[0]),
+                role: (isNewPedro || isMaster) ? 'super_admin' : (userDoc?.role || 'funcionario_padrao'),
+                uid: signUpData.user.id
+              });
+            }
+            return;
           }
         }
-        throw loginErr;
+        throw signInError;
       }
     } catch (err: any) {
-      console.error('Auth Error Final:', err.code, err.message);
-      if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') {
-        setAuthError('Senha incorreta. Verifique se digitou corretamente ou use o link abaixo.');
-      } else if (err.code === 'auth/user-not-found') {
-        setAuthError('Usuário não autorizado no sistema. Fale com Pedro Santos.');
-      } else if (err.code === 'auth/too-many-requests') {
-        setAuthError('Muitas tentativas malsucedidas. Tente novamente mais tarde.');
-      } else {
-        setAuthError('Erro no acesso: ' + (err.message || 'Tente novamente.'));
+      console.error('Supabase Auth Error:', err);
+      let message = err.message || 'Tente novamente.';
+      
+      if (message.includes('For security purposes')) {
+        const seconds = message.match(/\d+/) || ['alguns'];
+        message = `Aguarde ${seconds} segundos antes de tentar novamente (segurança do sistema).`;
+      } else if (message.includes('Invalid login credentials')) {
+        message = 'Usuário ou senha incorretos. Verifique suas credenciais.';
+      } else if (message.includes('Email not confirmed')) {
+        message = 'Por favor, confirme seu e-mail antes de acessar.';
       }
+      
+      setAuthError(message);
     }
   };
 
@@ -226,51 +221,42 @@ const OrderBoard = () => {
       setAuthError('Digite seu e-mail/usuário para receber o link de redefinição.');
       return;
     }
-    let finalEmail = email;
-    if (!email.includes('@')) finalEmail = `${email}@akanni.com`;
+    const finalEmail = email.includes('@') ? email : `${email}@akanni.com`;
 
     try {
-      await sendPasswordResetEmail(auth, finalEmail);
-      alert(`Um link de redefinição foi enviado para ${finalEmail}. Verifique sua caixa de entrada (e spam).`);
+      const { error } = await supabase.auth.resetPasswordForEmail(finalEmail);
+      if (error) throw error;
+      alert(`Um link de redefinição foi enviado para ${finalEmail}. Verifique sua caixa de entrada.`);
     } catch (err: any) {
       console.error(err);
-      if (err.code === 'auth/user-not-found') {
-        setAuthError('E-mail não encontrado no sistema.');
-      } else {
-        setAuthError('Erro ao enviar e-mail de redefinição.');
-      }
+      setAuthError('Erro ao enviar e-mail de redefinição.');
     }
   };
 
   const handleCreateTemplate = async (name: string, consumption: number) => {
     try {
-      await addDoc(collection(db, 'templates'), { name, fabricConsumption: consumption });
+      await supabase.from('templates').insert({ name, fabric_consumption: consumption });
     } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, 'templates');
+      console.error(err);
     }
   };
 
   const handleDeleteTemplate = async (id: string) => {
     try {
-      await deleteDoc(doc(db, 'templates', id));
+      await supabase.from('templates').delete().eq('id', id);
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `templates/${id}`);
+      console.error(err);
     }
   };
 
   const handleStatusChange = async (orderId: string, newStatus: OrderStatus) => {
     try {
-      const orderRef = doc(db, 'orders', orderId);
-      const order = orders.find(o => o.id === orderId);
-      if (!order) return;
-
-      await updateDoc(orderRef, { 
+      await supabase.from('orders').update({ 
         status: newStatus,
-        statusStartedAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
+        status_started_at: new Date().toISOString()
+      }).eq('id', orderId);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `orders/${orderId}`);
+      console.error(err);
     }
   };
 
@@ -287,60 +273,67 @@ const OrderBoard = () => {
 
   const handleCreateOrder = async (orderData: Partial<Order>) => {
     try {
+      const payload = {
+        customer_name: orderData.customerName,
+        customer_email: orderData.customerEmail,
+        customer_tax_id: orderData.customerTaxId,
+        customer_address: orderData.customerAddress,
+        items: orderData.items,
+        status: orderData.status || 'pending',
+        delivery_date: orderData.deliveryDate,
+        design_images: orderData.designImages || [],
+        photos: orderData.photos || [],
+        is_delayed: orderData.isDelayed || false,
+        nfe_issued: orderData.nfeIssued || false
+      };
+
       if (editingOrder) {
-        // Update logic
-        const ref = doc(db, 'orders', editingOrder.id);
-        await updateDoc(ref, {
-          ...orderData,
-          updatedAt: serverTimestamp()
-        });
+        await supabase.from('orders').update(payload).eq('id', editingOrder.id);
         setEditingOrder(null);
         setIsOrderFormOpen(false);
         return;
       }
 
-      await runTransaction(db, async (transaction) => {
-        // 1. Create order
-        const ordersRef = collection(db, 'orders');
-        const newOrderDoc = doc(ordersRef);
-        transaction.set(newOrderDoc, {
-          ...orderData,
-          statusStartedAt: serverTimestamp(),
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
+      // Supabase transaction equivalent (using RPC or separate calls - simple approach for now)
+      const { data: newOrder, error: orderError } = await supabase
+        .from('orders')
+        .insert({
+          ...payload,
+          status_started_at: new Date().toISOString()
+        })
+        .select()
+        .single();
 
-        // 2. Subtract from stock for EACH item in order
-        if (orderData.items) {
-          for (const item of orderData.items) {
-            // Find specific matching fabric (by name and color if possible)
-            const fabric = stock.find(s => 
-              s.type === 'fabric' && 
-              s.name === item.fabricType && 
-              (!item.fabricColor || s.color === item.fabricColor)
-            );
+      if (orderError) throw orderError;
 
-            if (fabric && item.totalFabricEstimate) {
-              const stockRef = doc(db, 'stock', fabric.id);
-              transaction.update(stockRef, {
-                quantity: increment(-item.totalFabricEstimate)
-              });
-            }
+      // Update stock quantities
+      if (orderData.items) {
+        for (const item of orderData.items) {
+          const fabric = stock.find(s => 
+            s.type === 'fabric' && 
+            s.name === item.fabricType && 
+            (!item.fabricColor || s.color === item.fabricColor)
+          );
+
+          if (fabric && item.totalFabricEstimate) {
+            await supabase.from('stock')
+              .update({ quantity: fabric.quantity - item.totalFabricEstimate })
+              .eq('id', fabric.id);
           }
         }
-      });
+      }
       
       setIsOrderFormOpen(false);
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, 'orders/transaction');
+      console.error("Order creation failed", err);
     }
   };
 
   const handleDeleteOrder = async (id: string) => {
     try {
-      await deleteDoc(doc(db, 'orders', id));
+      await supabase.from('orders').delete().eq('id', id);
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `orders/${id}`);
+      console.error(err);
     }
   };
 
@@ -351,44 +344,58 @@ const OrderBoard = () => {
 
   const handleAddStockItem = async (data: Partial<StockItem>) => {
     try {
-      await addDoc(collection(db, 'stock'), data);
+      await supabase.from('stock').insert({
+        name: data.name,
+        type: data.type,
+        color: data.color,
+        quantity: data.quantity,
+        unit: data.unit,
+        min_quantity: data.minQuantity
+      });
     } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, 'stock');
+      console.error(err);
     }
   };
 
   const handleUpdateStockItem = async (id: string, data: Partial<StockItem>) => {
     try {
-      const ref = doc(db, 'stock', id);
-      await updateDoc(ref, data);
+      await supabase.from('stock').update({
+        name: data.name,
+        type: data.type,
+        color: data.color,
+        quantity: data.quantity,
+        unit: data.unit,
+        min_quantity: data.minQuantity
+      }).eq('id', id);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `stock/${id}`);
+      console.error(err);
     }
   };
 
   const handleDeleteStockItem = async (id: string) => {
     try {
-      await deleteDoc(doc(db, 'stock', id));
+      await supabase.from('stock').delete().eq('id', id);
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `stock/${id}`);
+      console.error(err);
     }
   };
 
   const handleUpdateStockQuantity = async (id: string, delta: number) => {
     try {
-      const ref = doc(db, 'stock', id);
-      await updateDoc(ref, { quantity: increment(delta) });
+      const item = stock.find(s => s.id === id);
+      if (item) {
+        await supabase.from('stock').update({ quantity: item.quantity + delta }).eq('id', id);
+      }
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `stock/${id}`);
+      console.error(err);
     }
   };
 
   const handleNfeSuccess = async (orderId: string) => {
     try {
-      const ref = doc(db, 'orders', orderId);
-      await updateDoc(ref, { nfeIssued: true, updatedAt: serverTimestamp() });
+      await supabase.from('orders').update({ nfe_issued: true }).eq('id', orderId);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `orders/${orderId}`);
+      console.error(err);
     }
   };
 
@@ -406,45 +413,49 @@ const OrderBoard = () => {
         <div className="max-w-md w-full bg-white p-12 rounded-[40px] shadow-2xl border border-zinc-100 text-center">
           <div className="w-20 h-20 bg-zinc-900 rounded-3xl flex items-center justify-center text-white text-3xl font-black mx-auto mb-8 shadow-xl">AK</div>
           <h1 className="text-3xl font-black text-zinc-900 mb-2 tracking-tighter">Akanni Confecções</h1>
-          <p className="text-zinc-500 mb-8 font-medium italic">Alfaiataria Industrial Inteligente</p>
+          <p className="text-zinc-500 mb-8 font-medium italic">Alfaiataria Industrial Inteligente (Supabase)</p>
 
           <form onSubmit={handleAuth} className="space-y-4 text-left">
             <div>
-              <label className="block text-xs font-bold uppercase text-zinc-400 mb-1 ml-1">E-mail ou Usuário</label>
+              <label className="block text-xs font-bold uppercase text-zinc-400 mb-1 ml-1 tracking-widest">Usuário</label>
               <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
+                <Users className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
                 <input 
                   type="text" 
                   required
-                  placeholder="seu@email.com ou usuario"
-                  className="w-full pl-12 pr-4 py-3 bg-zinc-50 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-zinc-900 outline-none transition-all"
+                  placeholder="Ex: pedro_santos"
+                  className="w-full pl-12 pr-4 py-4 bg-zinc-50 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-zinc-900 outline-none transition-all font-medium"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
             </div>
             <div>
-              <label className="block text-xs font-bold uppercase text-zinc-400 mb-1 ml-1">Senha</label>
+              <label className="block text-xs font-bold uppercase text-zinc-400 mb-1 ml-1 tracking-widest">Senha</label>
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" size={18} />
                 <input 
                   type="password" 
                   required
-                  placeholder="Mínimo 6 caracteres"
-                  className="w-full pl-12 pr-4 py-3 bg-zinc-50 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-zinc-900 outline-none transition-all"
+                  placeholder="Sua senha"
+                  className="w-full pl-12 pr-4 py-4 bg-zinc-50 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-zinc-900 outline-none transition-all font-medium"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </div>
             </div>
 
-            {authError && <p className="text-red-500 text-xs font-bold mt-2 text-center">{authError}</p>}
+            {authError && (
+              <div className="bg-red-50 text-red-600 p-4 rounded-xl text-xs font-bold border border-red-100 italic">
+                {authError}
+              </div>
+            )}
 
             <button 
               type="submit"
-              className="w-full py-4 bg-zinc-900 text-white rounded-2xl font-bold flex items-center justify-center hover:bg-zinc-800 transition-all mt-4"
+              className="w-full py-5 bg-zinc-900 text-white rounded-[22px] font-black text-lg flex items-center justify-center hover:bg-zinc-800 transition-all shadow-xl active:scale-[0.98] group"
             >
-              <LogIn size={20} className="mr-3" />
+              <LogIn size={20} className="mr-3 group-hover:translate-x-1 transition-transform" />
               Entrar no Sistema
             </button>
           </form>
@@ -456,10 +467,6 @@ const OrderBoard = () => {
           >
             Esqueci minha senha
           </button>
-
-          <div className="mt-8 pt-8 border-t border-zinc-50">
-            <p className="text-[10px] text-zinc-400 uppercase tracking-widest font-bold">Desenvolvido para Akanni Confecções</p>
-          </div>
         </div>
       </div>
     );

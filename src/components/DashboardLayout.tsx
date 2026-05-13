@@ -1,7 +1,7 @@
 import React from 'react';
 import { LayoutDashboard, ShoppingBag, Box, Users, Settings, LogOut, Menu, X, Bell } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { logout } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface SidebarItemProps {
@@ -83,7 +83,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode, activeTab: s
             </div>
           </div>
           <button
-            onClick={logout}
+            onClick={() => supabase.auth.signOut()}
             className="w-full flex items-center space-x-3 px-4 py-3 text-red-500 hover:bg-red-50 rounded-lg transition-colors duration-200"
           >
             <LogOut size={20} />

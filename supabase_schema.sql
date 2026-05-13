@@ -1,0 +1,80 @@
+-- Enable UUID extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- Users Table
+CREATE TABLE IF NOT EXISTS public.users (
+  id TEXT PRIMARY KEY, -- Use email or uid as ID for simpler migration
+  email TEXT UNIQUE NOT NULL,
+  username TEXT,
+  display_name TEXT,
+  role TEXT DEFAULT 'funcionario_padrao',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  temp_password TEXT,
+  uid TEXT
+);
+
+-- Fabric Templates Table
+CREATE TABLE IF NOT EXISTS public.templates (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  fabric_consumption NUMERIC NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Stock Table
+CREATE TABLE IF NOT EXISTS public.stock (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  type TEXT NOT NULL, -- fabric, buttons, thread, label, others
+  color TEXT,
+  quantity NUMERIC NOT NULL DEFAULT 0,
+  unit TEXT NOT NULL, -- meters, units, kg
+  min_quantity NUMERIC DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Orders Table
+CREATE TABLE IF NOT EXISTS public.orders (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  customer_name TEXT NOT NULL,
+  customer_email TEXT,
+  customer_tax_id TEXT,
+  customer_address TEXT,
+  items JSONB DEFAULT '[]'::jsonb,
+  status TEXT DEFAULT 'pending',
+  status_started_at TIMESTAMPTZ DEFAULT NOW(),
+  delivery_date TIMESTAMPTZ,
+  design_images JSONB DEFAULT '[]'::jsonb,
+  photos JSONB DEFAULT '[]'::jsonb,
+  is_delayed BOOLEAN DEFAULT FALSE,
+  nfe_issued BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Enable RLS
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.templates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.stock ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
+
+-- Policies (Simplified for Initial Setup)
+CREATE POLICY "Allow all to authenticated" ON public.users FOR ALL TO authenticated USING (true);
+CREATE POLICY "Allow all to authenticated" ON public.templates FOR ALL TO authenticated USING (true);
+CREATE POLICY "Allow all to authenticated" ON public.stock FOR ALL TO authenticated USING (true);
+CREATE POLICY "Allow all to authenticated" ON public.orders FOR ALL TO authenticated USING (true);
+
+-- Functions for auto-updating updated_at
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON public.users FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
+CREATE TRIGGER update_stock_updated_at BEFORE UPDATE ON public.stock FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
+CREATE TRIGGER update_orders_updated_at BEFORE UPDATE ON public.orders FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();

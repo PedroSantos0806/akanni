@@ -1,18 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  collection, 
-  onSnapshot, 
-  query, 
-  doc, 
-  deleteDoc, 
-  setDoc,
-  serverTimestamp 
-} from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { UserProfile, UserRole } from '../types';
 import { UserPlus, Trash2, Shield, Mail, User as UserIcon, Loader2, Edit2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 
 export const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -35,15 +25,34 @@ export const UserManagement: React.FC = () => {
     funcionario_padrao: 'Funcionário Padrão'
   };
 
-  useEffect(() => {
-    const q = query(collection(db, 'users'));
-    const unsub = onSnapshot(q, (snap) => {
-      const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
-      setUsers(data);
-      setLoading(false);
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'users'));
+  const fetchUsers = async () => {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .order('display_name');
+    if (data) {
+      setUsers(data.map((u: any) => ({
+        id: u.id,
+        uid: u.uid || u.id, // Fallback if uid is not yet set
+        username: u.username,
+        email: u.email,
+        displayName: u.display_name,
+        role: u.role,
+        tempPassword: u.temp_password
+      } as UserProfile)));
+    }
+    setLoading(false);
+  };
 
-    return () => unsub();
+  useEffect(() => {
+    fetchUsers();
+    const channel = supabase.channel('users-all-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, fetchUsers)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const handleOpenEdit = (user: UserProfile) => {
@@ -64,31 +73,35 @@ export const UserManagement: React.FC = () => {
       const trimmedUser = formData.username.trim().toLowerCase();
       const finalEmail = formData.email.trim() || `${trimmedUser}@akanni.com`;
       
-      const userRef = doc(db, 'users', editingUser ? editingUser.id : finalEmail);
-      await setDoc(userRef, {
+      const payload = {
+        id: editingUser ? editingUser.id : finalEmail,
         email: finalEmail,
         username: trimmedUser,
-        displayName: formData.displayName,
+        display_name: formData.displayName,
         role: formData.role,
-        tempPassword: formData.tempPassword,
-        updatedAt: serverTimestamp(),
-        ...(editingUser ? {} : { createdAt: serverTimestamp() })
-      }, { merge: true });
+        temp_password: formData.tempPassword
+      };
+
+      const { error } = await supabase.from('users').upsert(payload);
+      if (error) throw error;
       
       setIsAdding(false);
       setEditingUser(null);
       setFormData({ username: '', email: '', displayName: '', role: 'funcionario_padrao', tempPassword: '' });
+      fetchUsers();
     } catch (err) {
-      handleFirestoreError(err, editingUser ? OperationType.UPDATE : OperationType.CREATE, 'users');
+      console.error('Error saving user:', err);
     }
   };
 
-  const handleDeleteUser = async (uid: string) => {
+  const handleDeleteUser = async (id: string) => {
     if (!confirm('Deseja realmente remover este acesso?')) return;
     try {
-      await deleteDoc(doc(db, 'users', uid));
+      const { error } = await supabase.from('users').delete().eq('id', id);
+      if (error) throw error;
+      fetchUsers();
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `users/${uid}`);
+      console.error('Error deleting user:', err);
     }
   };
 

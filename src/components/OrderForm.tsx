@@ -184,7 +184,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({ templates, onClose, onSubm
                             accept="image/*"
                             className="hidden"
                             onChange={e => {
-                              const files = Array.from(e.target.files || []);
+                              const files = Array.from(e.target.files || []) as File[];
                               files.forEach(file => {
                                 const reader = new FileReader();
                                 reader.onloadend = () => {

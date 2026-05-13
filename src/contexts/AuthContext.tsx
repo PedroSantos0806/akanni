@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, onAuthStateChanged } from 'firebase/auth';
-import { auth, db } from '../lib/firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { User } from '@supabase/supabase-js';
+import { supabase } from '../lib/supabase';
 import { UserProfile } from '../types';
 
 interface AuthContextType {
@@ -19,54 +18,84 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      try {
-        setUser(user);
-        if (user) {
-          const profileId = user.email || user.uid;
-          const userRef = doc(db, 'users', profileId);
-          const userSnap = await getDoc(userRef);
-          
-          if (userSnap.exists()) {
-            const profileData = userSnap.data() as UserProfile;
-            // Sync UID if it's missing or different
-            if (profileData.uid !== user.uid) {
-              await setDoc(userRef, { uid: user.uid }, { merge: true });
-            }
-            setProfile(profileData);
-          } else {
-            // Bootstrap logic for Master Admins
-            const isMaster = user.email === 'ai.auroratech@gmail.com' || 
-                            user.email === 'pedro_santos@akanni.com' || 
-                            user.email === 'pedrohenrique0806@gmail.com';
-            
-            if (isMaster) {
-              const newProfile: UserProfile = {
-                uid: user.uid,
-                displayName: 'Pedro Santos',
-                email: user.email!,
-                role: 'super_admin'
-              };
-              await setDoc(userRef, newProfile);
-              setProfile(newProfile);
-            } else {
-              // User logged in but has no profile -> reject
-              console.error("Acesso não autorizado: perfil não encontrado.");
-              await auth.signOut();
-              setProfile(null);
-            }
-          }
-        } else {
-          setProfile(null);
-        }
-      } catch (err) {
-        console.error("Erro na inicialização do AuthContext:", err);
-      } finally {
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        fetchProfile(session.user);
+      } else {
         setLoading(false);
       }
     });
-    return unsubscribe;
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      
+      if (currentUser) {
+        await fetchProfile(currentUser);
+      } else {
+        setProfile(null);
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
+
+  const fetchProfile = async (currentUser: User) => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', currentUser.email || currentUser.id)
+        .single();
+
+      if (data) {
+        setProfile({
+          uid: currentUser.id,
+          displayName: data.display_name || data.username || '',
+          email: data.email,
+          role: data.role
+        });
+      } else {
+        // Bootstrap logic for Master Admins in Supabase
+        const isMaster = currentUser.email === 'ai.auroratech@gmail.com' || 
+                        currentUser.email === 'pedro_santos@akanni.com' || 
+                        currentUser.email === 'pedrohenrique0806@gmail.com';
+        
+        if (isMaster) {
+          const newProfile: UserProfile = {
+            id: currentUser.email || currentUser.id,
+            uid: currentUser.id,
+            displayName: 'Pedro Santos',
+            email: currentUser.email!,
+            role: 'super_admin'
+          };
+          
+          await supabase.from('users').insert({
+            id: currentUser.email || currentUser.id,
+            email: currentUser.email,
+            display_name: 'Pedro Santos',
+            role: 'super_admin',
+            uid: currentUser.id
+          });
+          
+          setProfile(newProfile);
+        } else {
+          console.error("Acesso não autorizado: perfil não encontrado no Supabase.");
+          await supabase.auth.signOut();
+          setProfile(null);
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao buscar perfil no Supabase:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <AuthContext.Provider value={{ user, profile, loading, isAdmin: profile?.role === 'super_admin' || profile?.role === 'admin_geral' }}>

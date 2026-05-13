@@ -44,10 +44,13 @@ export interface StockItem {
 export type UserRole = 'super_admin' | 'admin_geral' | 'gerente_producao' | 'gestor_geral' | 'funcionario_padrao';
 
 export interface UserProfile {
+  id: string;
   uid: string;
   displayName: string | null;
   email: string | null;
   role: UserRole;
+  username?: string;
+  tempPassword?: string;
 }
 
 export interface FabricTemplate {
