@@ -417,24 +417,53 @@ const OrderBoard = () => {
     { title: 'Despachado', status: 'delivered' },
   ];
 
-  if (authLoading) {
-    return (
-      <div className="h-screen w-full flex items-center justify-center bg-zinc-50">
-        <div className="flex flex-col items-center">
-          <Loader2 className="animate-spin text-zinc-900 mb-4" size={48} />
-          <p className="text-zinc-500 font-medium animate-pulse">Autenticando...</p>
+  // Determine if we should show the login screen
+  const isAuthReady = !authLoading && (!user || (user && profile));
+  
+  if (!isAuthReady || !user || !profile) {
+    // If we have a user but no profile, and auth isn't loading, it's an error
+    if (!authLoading && user && !profile) {
+      return (
+        <div className="h-screen w-full flex items-center justify-center bg-zinc-50 p-4">
+          <div className="max-w-md w-full bg-white p-12 rounded-[40px] shadow-2xl border border-zinc-100 text-center">
+            <AlertTriangle className="text-amber-500 mx-auto mb-6" size={48} />
+            <h1 className="text-2xl font-bold text-zinc-900 mb-2">Acesso Restrito</h1>
+            <p className="text-zinc-500 mb-8 italic">Seu usuário foi autenticado, mas seu perfil de acesso não foi encontrado ou ainda não foi aprovado.</p>
+            <p className="text-sm font-bold text-zinc-400 mb-8 uppercase tracking-widest">{user.email}</p>
+            <button 
+              onClick={() => supabase.auth.signOut().then(() => window.location.reload())}
+              className="w-full py-5 bg-zinc-900 text-white rounded-[22px] font-black text-lg flex items-center justify-center hover:bg-zinc-800 transition-all shadow-xl"
+            >
+              Voltar para Login
+            </button>
+          </div>
         </div>
-      </div>
-    );
-  }
+      );
+    }
 
-  if (!user) {
+    if (authLoading) {
+      return (
+        <div className="h-screen w-full flex items-center justify-center bg-zinc-50">
+          <div className="flex flex-col items-center">
+            <Loader2 className="animate-spin text-zinc-900 mb-4" size={48} />
+            <p className="text-zinc-500 font-medium animate-pulse">Autenticando...</p>
+            <button 
+              onClick={() => supabase.auth.signOut().then(() => window.location.reload())}
+              className="mt-8 text-xs font-bold text-zinc-400 hover:text-zinc-600 uppercase tracking-widest"
+            >
+              Cancelar e ir para Login
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="h-screen w-full flex items-center justify-center bg-zinc-50 p-4">
         <div className="max-w-md w-full bg-white p-12 rounded-[40px] shadow-2xl border border-zinc-100 text-center">
           <div className="w-20 h-20 bg-zinc-900 rounded-3xl flex items-center justify-center text-white text-3xl font-black mx-auto mb-8 shadow-xl">AK</div>
           <h1 className="text-3xl font-black text-zinc-900 mb-2 tracking-tighter">Akanni Confecções</h1>
-          <p className="text-zinc-500 mb-8 font-medium italic">Alfaiataria Industrial Inteligente (Supabase)</p>
+          <p className="text-zinc-500 mb-8 font-medium italic">Alfaiataria Industrial Inteligente</p>
 
           <form onSubmit={handleAuth} className="space-y-4 text-left">
             <div>
@@ -508,12 +537,20 @@ const OrderBoard = () => {
           <h2 className="text-xl font-bold text-zinc-900 mb-2">Carregando Dados</h2>
           <p className="text-zinc-500">Isso pode levar alguns segundos se a conexão estiver lenta.</p>
           
-          <button 
-            onClick={() => window.location.reload()}
-            className="mt-8 text-zinc-400 text-xs font-bold uppercase tracking-widest hover:text-zinc-900 transition-colors"
-          >
-            Tentar recarregar página
-          </button>
+          <div className="flex flex-col space-y-4 mt-8">
+            <button 
+              onClick={() => window.location.reload()}
+              className="text-zinc-900 text-sm font-bold bg-zinc-100 py-3 rounded-xl hover:bg-zinc-200 transition-all"
+            >
+              Tentar recarregar página
+            </button>
+            <button 
+              onClick={() => supabase.auth.signOut().then(() => window.location.reload())}
+              className="text-zinc-400 text-xs font-bold uppercase tracking-widest hover:text-red-500 transition-colors"
+            >
+              Sair do Sistema
+            </button>
+          </div>
         </div>
       </div>
     );

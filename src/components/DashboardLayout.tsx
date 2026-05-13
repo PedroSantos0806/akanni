@@ -72,8 +72,8 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode, activeTab: s
 
         <div className="p-4 border-t border-zinc-100">
           <div className="flex items-center space-x-3 px-4 py-3 mb-2">
-            <div className="w-10 h-10 rounded-full bg-zinc-200 overflow-hidden">
-              <img src={user?.photoURL || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix'} alt="Avatar" />
+            <div className="w-10 h-10 rounded-full bg-zinc-200 overflow-hidden ring-2 ring-white">
+              <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.email || 'user'}`} alt="Avatar" />
             </div>
             <div className="flex-1 overflow-hidden">
               <p className="text-sm font-semibold truncate text-zinc-900">{profile?.displayName || 'Usuário'}</p>

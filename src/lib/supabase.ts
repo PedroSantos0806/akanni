@@ -13,4 +13,10 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.warn("⚠️ ATENÇÃO: VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY não configurados!");
 }
 
-export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '');
+export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '', {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: true,
+    detectSessionInUrl: true
+  }
+});
