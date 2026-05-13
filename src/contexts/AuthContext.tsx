@@ -59,7 +59,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const fetchProfile = async (currentUser: User) => {
     try {
-      // Tentar buscar por UID primeiro (mais seguro), depois por email
+      const cacheKey = `profile_${currentUser.id}`;
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        setProfile(JSON.parse(cached));
+        setLoading(false);
+      }
+
       let { data, error } = await supabase
         .from('users')
         .select('*')
@@ -76,50 +82,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (data) {
-        setProfile({
+        const newProfile = {
           id: data.id,
           uid: data.uid || currentUser.id,
           displayName: data.display_name || data.username || '',
           email: data.email,
           role: data.role
-        });
+        };
+        setProfile(newProfile);
+        localStorage.setItem(cacheKey, JSON.stringify(newProfile));
       } else {
-        // Bootstrap logic for Master Admins in Supabase
         const isMaster = currentUser.email === 'ai.auroratech@gmail.com' || 
                         currentUser.email === 'pedro_santos@akanni.com' || 
                         currentUser.email === 'pedrohenrique0806@gmail.com';
         
         if (isMaster) {
-          const newProfile: UserProfile = {
+          const mProfile: UserProfile = {
             id: currentUser.email || currentUser.id,
             uid: currentUser.id,
             displayName: 'Pedro Santos',
             email: currentUser.email!,
             role: 'super_admin'
           };
+          setProfile(mProfile);
+          localStorage.setItem(cacheKey, JSON.stringify(mProfile));
           
-          const { error: insertError } = await supabase.from('users').insert({
+          // Tenta criar o perfil no banco silenciosamente se for mestre e não existir
+          supabase.from('users').insert({
             id: currentUser.email || currentUser.id,
             email: currentUser.email,
             display_name: 'Pedro Santos',
             role: 'super_admin',
             uid: currentUser.id
+          }).then(({ error: insertError }) => {
+            if (insertError) console.warn("Aviso: Mestre logado, mas perfil DB não pôde ser criado.");
           });
-          
-          if (insertError) {
-            console.error("Erro ao criar perfil mestre:", insertError);
-            // Mesmo se falhar o insert, tentamos deixar o usuário entrar localmente
-          }
-          
-          setProfile(newProfile);
         } else {
-          console.error("Acesso não autorizado: perfil não encontrado no Supabase.");
-          await supabase.auth.signOut();
+          console.error("Perfil não encontrado.");
           setProfile(null);
         }
       }
     } catch (err) {
-      console.error("Erro ao buscar perfil no Supabase:", err);
+      console.error("Erro no fetchProfile:", err);
     } finally {
       setLoading(false);
     }

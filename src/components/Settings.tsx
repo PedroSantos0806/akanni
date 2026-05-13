@@ -26,12 +26,16 @@ export const Settings = () => {
     try {
       const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) throw error;
-      setMessage({ text: 'Senha atualizada com sucesso!', type: 'success' });
+      setMessage({ text: 'Senha atualizada com sucesso! Você continuará logado.', type: 'success' });
       setNewPassword('');
       setConfirmPassword('');
     } catch (err: any) {
-      console.error(err);
-      setMessage({ text: 'Erro ao atualizar senha: ' + (err.message || 'Verifique sua conexão.'), type: 'error' });
+      console.error('Password Update Error:', err);
+      let errorMsg = 'Erro ao atualizar senha.';
+      if (err.message?.includes('New password should be different')) {
+        errorMsg = 'A nova senha deve ser diferente da atual.';
+      }
+      setMessage({ text: errorMsg, type: 'error' });
     } finally {
       setLoading(false);
     }

@@ -26,16 +26,19 @@ export const UserManagement: React.FC = () => {
   };
 
   const fetchUsers = async () => {
+    setLoading(true);
     try {
       const { data, error } = await supabase
         .from('users')
         .select('*')
         .order('display_name');
+      
       if (error) throw error;
+      
       if (data) {
         setUsers(data.map((u: any) => ({
           id: u.id,
-          uid: u.uid || u.id, // Fallback if uid is not yet set
+          uid: u.uid || u.id,
           username: u.username,
           email: u.email,
           displayName: u.display_name,

@@ -126,9 +126,22 @@ const OrderBoard = () => {
   useEffect(() => {
     if (!user) return;
 
-    fetchOrders();
-    fetchStock();
-    fetchTemplates();
+    const initData = async () => {
+      setLoading(true);
+      try {
+        await Promise.all([
+          fetchOrders(),
+          fetchStock(),
+          fetchTemplates()
+        ]);
+      } catch (err) {
+        console.error("Erro no carregamento paralelo:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initData();
 
     // Set up Real-time subscriptions
     const ordersChannel = supabase.channel('orders-realtime')
