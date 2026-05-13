@@ -1,16 +1,27 @@
-import React, { useState } from 'react';
-import { X, Save, Plus, Package, Calculator, Trash2, ShoppingBasket } from 'lucide-react';
-import { Order, OrderStatus, FabricTemplate, OrderItem } from '../types';
+import React, { useState, useMemo } from 'react';
+import { X, Save, Plus, Package, Calculator, Trash2, ShoppingBasket, AlertCircle } from 'lucide-react';
+import { Order, OrderStatus, FabricTemplate, OrderItem, StockItem } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface OrderFormProps {
   templates: FabricTemplate[];
+  stock: StockItem[];
   onClose: () => void;
   onSubmit: (order: Partial<Order>) => void;
   initialData?: Order | null;
 }
 
-export const OrderForm: React.FC<OrderFormProps> = ({ templates, onClose, onSubmit, initialData }) => {
+export const OrderForm: React.FC<OrderFormProps> = ({ templates, stock, onClose, onSubmit, initialData }) => {
+  // Extract unique fabric types and colors from stock
+  const fabrics = useMemo(() => {
+    const list = stock.filter(s => s.type === 'fabric');
+    const types = Array.from(new Set(list.map(s => s.name)));
+    return types.map(type => ({
+      name: type,
+      colors: Array.from(new Set(list.filter(s => s.name === type).map(s => s.color)))
+    }));
+  }, [stock]);
+
   const [customerInfo, setCustomerInfo] = useState({
     customerName: initialData?.customerName || '',
     customerEmail: initialData?.customerEmail || '',
@@ -23,8 +34,8 @@ export const OrderForm: React.FC<OrderFormProps> = ({ templates, onClose, onSubm
       templateId: templates[0]?.id || '',
       shirtType: templates[0]?.name || '',
       quantity: 10,
-      fabricType: 'Meia Malha',
-      fabricColor: 'Branco',
+      fabricType: fabrics[0]?.name || '',
+      fabricColor: fabrics[0]?.colors[0] || '',
       fabricUsagePerUnit: templates[0]?.fabricConsumption || 1.2,
       totalFabricEstimate: (10 * (templates[0]?.fabricConsumption || 1.2))
     }]
@@ -35,8 +46,8 @@ export const OrderForm: React.FC<OrderFormProps> = ({ templates, onClose, onSubm
       templateId: templates[0]?.id || '',
       shirtType: templates[0]?.name || '',
       quantity: 10,
-      fabricType: 'Meia Malha',
-      fabricColor: 'Branco',
+      fabricType: fabrics[0]?.name || '',
+      fabricColor: fabrics[0]?.colors[0] || '',
       fabricUsagePerUnit: templates[0]?.fabricConsumption || 1.2,
       totalFabricEstimate: (10 * (templates[0]?.fabricConsumption || 1.2))
     }]);
@@ -46,6 +57,11 @@ export const OrderForm: React.FC<OrderFormProps> = ({ templates, onClose, onSubm
     if (items.length > 1) {
       setItems(items.filter((_, i) => i !== idx));
     }
+  };
+
+  const getAvailableStock = (type: string, color: string) => {
+    const item = stock.find(s => s.name === type && s.color === color);
+    return item ? item.quantity : 0;
   };
 
   const updateItem = (idx: number, field: keyof OrderItem, value: any) => {
@@ -58,6 +74,11 @@ export const OrderForm: React.FC<OrderFormProps> = ({ templates, onClose, onSubm
         item.shirtType = template.name;
         item.fabricUsagePerUnit = template.fabricConsumption;
       }
+    }
+
+    if (field === 'fabricType') {
+        const typeData = fabrics.find(f => f.name === value);
+        item.fabricColor = typeData?.colors[0] || '';
     }
 
     const q = Number.isNaN(item.quantity) ? 0 : (item.quantity || 0);
@@ -131,7 +152,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({ templates, onClose, onSubm
                   <input
                     type="text"
                     required
-                    className="w-full px-4 py-2 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none"
+                    className="w-full px-4 py-2 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none transition-all"
                     value={customerInfo.customerName}
                     onChange={e => setCustomerInfo({ ...customerInfo, customerName: e.target.value })}
                   />
@@ -140,7 +161,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({ templates, onClose, onSubm
                   <label className="block text-xs font-semibold text-zinc-500 mb-1">E-mail</label>
                   <input
                     type="email"
-                    className="w-full px-4 py-2 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none"
+                    className="w-full px-4 py-2 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none transition-all"
                     value={customerInfo.customerEmail}
                     onChange={e => setCustomerInfo({ ...customerInfo, customerEmail: e.target.value })}
                   />
@@ -151,13 +172,13 @@ export const OrderForm: React.FC<OrderFormProps> = ({ templates, onClose, onSubm
                     <input
                       type="date"
                       required
-                      className="w-full px-4 py-2 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none"
+                      className="w-full px-4 py-2 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none transition-all"
                       value={customerInfo.deliveryDate}
                       onChange={e => setCustomerInfo({ ...customerInfo, deliveryDate: e.target.value })}
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-zinc-500 mb-1">Desenhos/Projetos (Frente, Verso, etc)</label>
+                    <label className="block text-xs font-semibold text-zinc-500 mb-1">Desenhos/Projetos</label>
                     <div className="grid grid-cols-2 gap-2 mb-2">
                       {customerInfo.designImages.map((img, i) => (
                         <div key={i} className="relative aspect-video rounded-xl overflow-hidden border border-zinc-200 group">
@@ -212,7 +233,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({ templates, onClose, onSubm
                 <button
                   type="button"
                   onClick={addItem}
-                  className="text-xs font-bold text-zinc-900 hover:text-zinc-600 flex items-center"
+                  className="text-xs font-bold text-zinc-900 hover:text-zinc-600 flex items-center bg-zinc-50 px-3 py-1.5 rounded-full transition-all"
                 >
                   <Plus size={14} className="mr-1" /> Add Produto
                 </button>
@@ -220,95 +241,116 @@ export const OrderForm: React.FC<OrderFormProps> = ({ templates, onClose, onSubm
 
               <div className="space-y-4">
                 <AnimatePresence initial={false}>
-                  {items.map((item, idx) => (
-                    <motion.div
-                      key={idx}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: 20 }}
-                      className="bg-zinc-50 p-6 rounded-2xl border border-zinc-100 relative group"
-                    >
-                      {items.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => removeItem(idx)}
-                          className="absolute -top-2 -right-2 p-1.5 bg-white border border-zinc-200 text-red-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      )}
+                  {items.map((item, idx) => {
+                    const available = getAvailableStock(item.fabricType || '', item.fabricColor || '');
+                    const isOutOfStock = available < (item.totalFabricEstimate || 0);
 
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div className="col-span-2">
-                          <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">Modelo</label>
-                          <select
-                            className="w-full px-3 py-1.5 bg-white border border-zinc-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-zinc-900"
-                            value={item.templateId}
-                            onChange={e => updateItem(idx, 'templateId', e.target.value)}
+                    return (
+                      <motion.div
+                        key={idx}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 20 }}
+                        className="bg-zinc-50 p-6 rounded-2xl border border-zinc-100 relative group"
+                      >
+                        {items.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeItem(idx)}
+                            className="absolute -top-2 -right-2 p-1.5 bg-white border border-zinc-200 text-red-500 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-sm z-10"
                           >
-                            {templates.map(t => (
-                              <option key={t.id} value={t.id}>{t.name}</option>
-                            ))}
-                          </select>
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          <div className="col-span-2">
+                            <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">Modelo</label>
+                            <select
+                              className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-zinc-900 transition-all"
+                              value={item.templateId}
+                              onChange={e => updateItem(idx, 'templateId', e.target.value)}
+                            >
+                              {templates.map(t => (
+                                <option key={t.id} value={t.id}>{t.name} ({t.fabricConsumption}m/un)</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">Quantidade</label>
+                            <input
+                              type="number"
+                              className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-zinc-900 transition-all"
+                              value={item.quantity === 0 ? '' : item.quantity}
+                              onChange={e => updateItem(idx, 'quantity', parseInt(e.target.value) || 0)}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">Total m</label>
+                            <div className="text-sm font-mono font-bold text-zinc-600 pt-2">{item.totalFabricEstimate}m</div>
+                          </div>
+                          <div className="col-span-2">
+                            <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">Tipo de Tecido</label>
+                            <select
+                              className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-zinc-900 transition-all"
+                              value={item.fabricType}
+                              onChange={e => updateItem(idx, 'fabricType', e.target.value)}
+                            >
+                              <option value="">Selecione...</option>
+                              {fabrics.map(f => (
+                                <option key={f.name} value={f.name}>{f.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="col-span-2">
+                            <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">Cor</label>
+                            <select
+                              className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-zinc-900 transition-all"
+                              value={item.fabricColor}
+                              onChange={e => updateItem(idx, 'fabricColor', e.target.value)}
+                            >
+                              <option value="">Selecione...</option>
+                              {fabrics.find(f => f.name === item.fabricType)?.colors.map(c => (
+                                <option key={c} value={c}>{c}</option>
+                              ))}
+                            </select>
+                          </div>
                         </div>
-                        <div>
-                          <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">Quantidade</label>
-                          <input
-                            type="number"
-                            className="w-full px-3 py-1.5 bg-white border border-zinc-200 rounded-lg text-sm font-bold outline-none focus:ring-2 focus:ring-zinc-900"
-                            value={item.quantity === 0 ? '' : item.quantity}
-                            onChange={e => updateItem(idx, 'quantity', parseInt(e.target.value) || 0)}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">Gasto Tecido</label>
-                          <div className="text-sm font-mono text-zinc-500 pt-1.5">{item.totalFabricEstimate}m</div>
-                        </div>
-                        <div className="col-span-2">
-                          <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">Tipo de Tecido</label>
-                          <input
-                            type="text"
-                            placeholder="ex: Meia Malha"
-                            className="w-full px-3 py-1.5 bg-white border border-zinc-200 rounded-lg text-sm outline-none"
-                            value={item.fabricType}
-                            onChange={e => updateItem(idx, 'fabricType', e.target.value)}
-                          />
-                        </div>
-                        <div className="col-span-2">
-                          <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">Cor</label>
-                          <input
-                            type="text"
-                            placeholder="ex: Preto Fosco"
-                            className="w-full px-3 py-1.5 bg-white border border-zinc-200 rounded-lg text-sm outline-none"
-                            value={item.fabricColor}
-                            onChange={e => updateItem(idx, 'fabricColor', e.target.value)}
-                          />
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
+
+                        {item.fabricType && item.fabricColor && (
+                          <div className={`mt-4 p-3 rounded-xl flex items-center space-x-2 ${isOutOfStock ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                            {isOutOfStock ? <AlertCircle size={14} className="shrink-0" /> : <Package size={14} className="shrink-0" />}
+                            <span className="text-xs font-bold">
+                              Estoque atual: {available}m 
+                              {isOutOfStock && ` (Faltam ${(item.totalFabricEstimate! - available).toFixed(1)}m para este lote)`}
+                            </span>
+                          </div>
+                        )}
+                      </motion.div>
+                    );
+                  })}
                 </AnimatePresence>
               </div>
             </div>
           </div>
 
-          <div className="pt-6 border-t border-zinc-100 flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="bg-zinc-900 text-white p-4 rounded-2xl flex items-center space-x-3">
-                <Package size={24} />
-                <div>
-                  <p className="text-[10px] font-bold uppercase opacity-60">Total Estimado</p>
-                  <p className="text-xl font-black">{calculateGrandTotalFabric()}m <span className="text-xs font-normal">de tecido</span></p>
-                </div>
+          <div className="pt-6 border-t border-zinc-100 flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="bg-zinc-900 text-white p-4 rounded-2xl flex items-center space-x-4 w-full md:w-auto">
+              <div className="p-2 bg-white/10 rounded-xl">
+                <Calculator size={20} />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase opacity-60">Consumo Total</p>
+                <p className="text-xl font-black">{calculateGrandTotalFabric()}m <span className="text-xs font-normal">de tecido</span></p>
               </div>
             </div>
 
             <button
               type="submit"
-              className="px-10 py-4 bg-zinc-900 text-white rounded-2xl font-bold flex items-center justify-center hover:bg-zinc-800 transition-all shadow-xl"
+              className="w-full md:w-auto px-10 py-4 bg-zinc-900 text-white rounded-2xl font-bold flex items-center justify-center hover:bg-zinc-800 transition-all shadow-xl hover:-translate-y-1 active:translate-y-0"
             >
               <Save size={20} className="mr-2" />
-              {initialData ? 'Salvar Alterações' : 'Finalizar e Iniciar Produção'}
+              {initialData ? 'Atualizar Pedido' : 'Iniciar Produção'}
             </button>
           </div>
         </form>

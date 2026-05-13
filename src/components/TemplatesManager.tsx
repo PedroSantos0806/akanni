@@ -13,12 +13,19 @@ export const TemplatesManager: React.FC<TemplatesManagerProps> = ({ templates, o
   const [newName, setNewName] = useState('');
   const [newConsumption, setNewConsumption] = useState(1.2);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (newName && newConsumption > 0) {
-      onAdd(newName, newConsumption);
-      setNewName('');
-      setNewConsumption(1.2);
+      try {
+        await onAdd(newName, newConsumption);
+        setNewName('');
+        setNewConsumption(1.2);
+      } catch (err) {
+        // App.tsx handles the alert, but we ensure we clear form only on success if we wanted
+        // For now, onAdd is async in App.tsx
+      }
+    } else {
+      alert("Nome e consumo (maior que zero) são obrigatórios.");
     }
   };
 

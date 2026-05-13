@@ -76,9 +76,14 @@ export const UserManagement: React.FC = () => {
     setIsAdding(true);
   };
 
-  const handleCreateUser = async (e: React.FormEvent) => {
+    const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      if (!formData.username || !formData.tempPassword) {
+        alert("Usuário e Senha Inicial são obrigatórios.");
+        return;
+      }
+
       const trimmedUser = formData.username.trim().toLowerCase();
       const finalEmail = formData.email.trim() || `${trimmedUser}@akanni.com`;
       
@@ -86,20 +91,23 @@ export const UserManagement: React.FC = () => {
         id: editingUser ? editingUser.id : finalEmail,
         email: finalEmail,
         username: trimmedUser,
-        display_name: formData.displayName,
+        display_name: formData.displayName || trimmedUser,
         role: formData.role,
-        temp_password: formData.tempPassword
+        temp_password: formData.tempPassword,
+        uid: editingUser?.uid || null // Keep existing UID if editing
       };
 
       const { error } = await supabase.from('users').upsert(payload);
       if (error) throw error;
       
+      alert(editingUser ? "Acesso atualizado!" : "Novo acesso cadastrado com sucesso!");
       setIsAdding(false);
       setEditingUser(null);
       setFormData({ username: '', email: '', displayName: '', role: 'funcionario_padrao', tempPassword: '' });
       fetchUsers();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error saving user:', err);
+      alert("Erro ao salvar acesso: " + (err.message || "Tente novamente."));
     }
   };
 
@@ -108,9 +116,11 @@ export const UserManagement: React.FC = () => {
     try {
       const { error } = await supabase.from('users').delete().eq('id', id);
       if (error) throw error;
+      alert("Acesso removido.");
       fetchUsers();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error deleting user:', err);
+      alert("Erro ao remover acesso: " + (err.message || "Tente novamente."));
     }
   };
 

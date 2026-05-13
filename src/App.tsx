@@ -82,8 +82,6 @@ const OrderBoard = () => {
     } catch (err) {
       console.error("Error fetching orders:", err);
       setAuthError("Erro ao conectar com o banco de dados. Verifique a configuração do Supabase.");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -126,18 +124,26 @@ const OrderBoard = () => {
   useEffect(() => {
     if (!user) return;
 
+    let mounted = true;
     const initData = async () => {
       setLoading(true);
+      
+      // Timeout de segurança para evitar loading infinito
+      const timer = setTimeout(() => {
+        if (mounted) setLoading(false);
+      }, 15000);
+
       try {
         await Promise.all([
           fetchOrders(),
           fetchStock(),
           fetchTemplates()
         ]);
+        clearTimeout(timer);
       } catch (err) {
         console.error("Erro no carregamento paralelo:", err);
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     };
 
@@ -157,6 +163,7 @@ const OrderBoard = () => {
       .subscribe();
 
     return () => {
+      mounted = false;
       supabase.removeChannel(ordersChannel);
       supabase.removeChannel(stockChannel);
       supabase.removeChannel(templatesChannel);
@@ -270,28 +277,35 @@ const OrderBoard = () => {
 
   const handleCreateTemplate = async (name: string, consumption: number) => {
     try {
-      await supabase.from('templates').insert({ name, fabric_consumption: consumption });
-    } catch (err) {
-      console.error(err);
+      const { error } = await supabase.from('templates').insert({ name, fabric_consumption: consumption });
+      if (error) throw error;
+    } catch (err: any) {
+      console.error("Error creating template:", err);
+      alert("Erro ao criar modelo: " + (err.message || "Tente novamente."));
     }
   };
 
   const handleDeleteTemplate = async (id: string) => {
+    if (!confirm('Deseja realmente remover este modelo?')) return;
     try {
-      await supabase.from('templates').delete().eq('id', id);
-    } catch (err) {
-      console.error(err);
+      const { error } = await supabase.from('templates').delete().eq('id', id);
+      if (error) throw error;
+    } catch (err: any) {
+      console.error("Error deleting template:", err);
+      alert("Erro ao excluir modelo: " + (err.message || "Tente novamente."));
     }
   };
 
   const handleStatusChange = async (orderId: string, newStatus: OrderStatus) => {
     try {
-      await supabase.from('orders').update({ 
+      const { error } = await supabase.from('orders').update({ 
         status: newStatus,
         status_started_at: new Date().toISOString()
       }).eq('id', orderId);
-    } catch (err) {
-      console.error(err);
+      if (error) throw error;
+    } catch (err: any) {
+      console.error("Error changing status:", err);
+      alert("Erro ao mudar status: " + (err.message || "Tente novamente."));
     }
   };
 
@@ -369,7 +383,7 @@ const OrderBoard = () => {
 
   const handleAddStockItem = async (data: Partial<StockItem>) => {
     try {
-      await supabase.from('stock').insert({
+      const { error } = await supabase.from('stock').insert({
         name: data.name,
         type: data.type,
         color: data.color,
@@ -377,14 +391,16 @@ const OrderBoard = () => {
         unit: data.unit,
         min_quantity: data.minQuantity
       });
-    } catch (err) {
-      console.error(err);
+      if (error) throw error;
+    } catch (err: any) {
+      console.error("Error adding stock item:", err);
+      alert("Erro ao cadastrar material: " + (err.message || "Tente novamente."));
     }
   };
 
   const handleUpdateStockItem = async (id: string, data: Partial<StockItem>) => {
     try {
-      await supabase.from('stock').update({
+      const { error } = await supabase.from('stock').update({
         name: data.name,
         type: data.type,
         color: data.color,
@@ -392,16 +408,20 @@ const OrderBoard = () => {
         unit: data.unit,
         min_quantity: data.minQuantity
       }).eq('id', id);
-    } catch (err) {
-      console.error(err);
+      if (error) throw error;
+    } catch (err: any) {
+      console.error("Error updating stock item:", err);
+      alert("Erro ao atualizar material: " + (err.message || "Tente novamente."));
     }
   };
 
   const handleDeleteStockItem = async (id: string) => {
     try {
-      await supabase.from('stock').delete().eq('id', id);
-    } catch (err) {
-      console.error(err);
+      const { error } = await supabase.from('stock').delete().eq('id', id);
+      if (error) throw error;
+    } catch (err: any) {
+      console.error("Error deleting stock item:", err);
+      alert("Erro ao excluir material: " + (err.message || "Tente novamente."));
     }
   };
 
@@ -409,18 +429,22 @@ const OrderBoard = () => {
     try {
       const item = stock.find(s => s.id === id);
       if (item) {
-        await supabase.from('stock').update({ quantity: item.quantity + delta }).eq('id', id);
+        const { error } = await supabase.from('stock').update({ quantity: item.quantity + delta }).eq('id', id);
+        if (error) throw error;
       }
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      console.error("Error updating stock quantity:", err);
+      alert("Erro ao atualizar quantidade: " + (err.message || "Tente novamente."));
     }
   };
 
   const handleNfeSuccess = async (orderId: string) => {
     try {
-      await supabase.from('orders').update({ nfe_issued: true }).eq('id', orderId);
-    } catch (err) {
-      console.error(err);
+      const { error } = await supabase.from('orders').update({ nfe_issued: true }).eq('id', orderId);
+      if (error) throw error;
+    } catch (err: any) {
+      console.error("Error updating NFE status:", err);
+      alert("Erro ao atualizar status da NFE: " + (err.message || "Tente novamente."));
     }
   };
 
@@ -643,6 +667,7 @@ const OrderBoard = () => {
       {isOrderFormOpen && (
         <OrderForm 
           templates={templates}
+          stock={stock}
           initialData={editingOrder}
           onClose={() => {
             setIsOrderFormOpen(false);
