@@ -54,17 +54,36 @@ CREATE TABLE IF NOT EXISTS public.orders (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS public.clients (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  tax_id TEXT,
+  email TEXT,
+  phone TEXT,
+  address_cep TEXT,
+  address_street TEXT,
+  address_number TEXT,
+  address_complement TEXT,
+  address_neighborhood TEXT,
+  address_city TEXT,
+  address_state TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Enable RLS
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.templates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.stock ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.clients ENABLE ROW LEVEL SECURITY;
 
 -- Policies (Simplified for Initial Setup)
 CREATE POLICY "Allow all to authenticated" ON public.users FOR ALL TO authenticated USING (true);
 CREATE POLICY "Allow all to authenticated" ON public.templates FOR ALL TO authenticated USING (true);
 CREATE POLICY "Allow all to authenticated" ON public.stock FOR ALL TO authenticated USING (true);
 CREATE POLICY "Allow all to authenticated" ON public.orders FOR ALL TO authenticated USING (true);
+CREATE POLICY "Allow all to authenticated" ON public.clients FOR ALL TO authenticated USING (true);
 
 -- Functions for auto-updating updated_at
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -78,3 +97,4 @@ $$ language 'plpgsql';
 CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON public.users FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
 CREATE TRIGGER update_stock_updated_at BEFORE UPDATE ON public.stock FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
 CREATE TRIGGER update_orders_updated_at BEFORE UPDATE ON public.orders FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();
+CREATE TRIGGER update_clients_updated_at BEFORE UPDATE ON public.clients FOR EACH ROW EXECUTE PROCEDURE update_updated_at_column();

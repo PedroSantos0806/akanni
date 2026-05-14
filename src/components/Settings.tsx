@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { Lock, Save, AlertCircle, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { motion } from 'motion/react';
+import { useAuth } from '../contexts/AuthContext';
 
 export const Settings = () => {
+  const { user } = useAuth();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -24,9 +26,31 @@ export const Settings = () => {
     setLoading(true);
     setMessage(null);
     try {
-      const { error } = await supabase.auth.updateUser({ password: newPassword });
-      if (error) throw error;
-      setMessage({ text: 'Senha atualizada com sucesso! Você continuará logado.', type: 'success' });
+      // 1. Try standard Supabase Auth update
+      const { error: authError } = await supabase.auth.updateUser({ password: newPassword });
+      
+      if (authError) {
+        // If session is missing OR user is unconfirmed, try manual update on users table
+        if (authError.message.includes('session missing') || authError.message.includes('Email not confirmed') || authError.message.includes('logins are disabled')) {
+          const identifier = user?.email || (window as any)._lastLoginId; 
+          
+          if (identifier) {
+            console.log("[Settings] Attempting manual password update for:", identifier);
+            const { error: dbError } = await supabase
+              .from('users')
+              .update({ temp_password: newPassword })
+              .or(`email.eq."${identifier}",id.eq."${identifier}"`);
+            
+            if (dbError) throw dbError;
+          } else {
+            throw authError;
+          }
+        } else {
+          throw authError;
+        }
+      }
+
+      setMessage({ text: 'Senha atualizada com sucesso!', type: 'success' });
       setNewPassword('');
       setConfirmPassword('');
     } catch (err: any) {

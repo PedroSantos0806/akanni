@@ -1,17 +1,19 @@
-import React, { useState, useMemo } from 'react';
-import { X, Save, Plus, Package, Calculator, Trash2, ShoppingBasket, AlertCircle } from 'lucide-react';
-import { Order, OrderStatus, FabricTemplate, OrderItem, StockItem } from '../types';
+import React, { useState, useMemo, useEffect } from 'react';
+import { X, Save, Plus, Package, Calculator, Trash2, ShoppingBasket, AlertCircle, Search, UserPlus } from 'lucide-react';
+import { Order, OrderStatus, FabricTemplate, OrderItem, StockItem, Client } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
+import { supabase } from '../lib/supabase';
 
 interface OrderFormProps {
   templates: FabricTemplate[];
   stock: StockItem[];
+  clients: Client[];
   onClose: () => void;
   onSubmit: (order: Partial<Order>) => void;
   initialData?: Order | null;
 }
 
-export const OrderForm: React.FC<OrderFormProps> = ({ templates, stock, onClose, onSubmit, initialData }) => {
+export const OrderForm: React.FC<OrderFormProps> = ({ templates, stock, clients, onClose, onSubmit, initialData }) => {
   // Extract unique fabric types and colors from stock
   const fabrics = useMemo(() => {
     const list = stock.filter(s => s.type === 'fabric');
@@ -22,12 +24,45 @@ export const OrderForm: React.FC<OrderFormProps> = ({ templates, stock, onClose,
     }));
   }, [stock]);
 
+  const [clientMode, setClientMode] = useState<'select' | 'new'>(initialData ? 'select' : 'select');
+  const [selectedClientId, setSelectedClientId] = useState<string>('');
+  const [clientSearch, setClientSearch] = useState('');
+  
   const [customerInfo, setCustomerInfo] = useState({
     customerName: initialData?.customerName || '',
     customerEmail: initialData?.customerEmail || '',
+    customerTaxId: initialData?.customerTaxId || '',
+    customerAddress: initialData?.customerAddress || '',
     deliveryDate: initialData?.deliveryDate || new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     designImages: initialData?.designImages || [] as string[],
   });
+
+  const [newClientAddress, setNewClientAddress] = useState({
+    addressCep: '',
+    addressStreet: '',
+    addressNumber: '',
+    addressComplement: '',
+    addressNeighborhood: '',
+    addressCity: '',
+    addressState: ''
+  });
+
+  // When selecting a client, auto-fill
+  useEffect(() => {
+    if (selectedClientId && clientMode === 'select') {
+      const client = clients.find(c => c.id === selectedClientId);
+      if (client) {
+        setCustomerInfo(prev => ({
+          ...prev,
+          customerName: client.name,
+          customerEmail: client.email || '',
+          customerTaxId: client.taxId || '',
+          customerAddress: client.addressStreet ? 
+            `${client.addressStreet}, ${client.addressNumber}${client.addressComplement ? ', ' + client.addressComplement : ''}, ${client.addressNeighborhood}, ${client.addressCity}/${client.addressState} - CEP: ${client.addressCep}` : ''
+        }));
+      }
+    }
+  }, [selectedClientId, clients, clientMode]);
 
   const [items, setItems] = useState<Partial<OrderItem>[]>(
     initialData?.items || [{
@@ -110,8 +145,13 @@ export const OrderForm: React.FC<OrderFormProps> = ({ templates, stock, onClose,
       return;
     }
 
+    const finalCustomerInfo = { ...customerInfo };
+    if (clientMode === 'new') {
+      finalCustomerInfo.customerAddress = `${newClientAddress.addressStreet}, ${newClientAddress.addressNumber}${newClientAddress.addressComplement ? ', ' + newClientAddress.addressComplement : ''}, ${newClientAddress.addressNeighborhood}, ${newClientAddress.addressCity}/${newClientAddress.addressState} - CEP: ${newClientAddress.addressCep}`;
+    }
+
     onSubmit({
-      ...customerInfo,
+      ...finalCustomerInfo,
       items: finalItems,
       status: initialData ? initialData.status : 'pending',
       photos: initialData?.photos || [],
@@ -121,13 +161,13 @@ export const OrderForm: React.FC<OrderFormProps> = ({ templates, stock, onClose,
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-900/40 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 md:p-4 bg-zinc-900/40 backdrop-blur-sm">
       <motion.div
         initial={{ opacity: 0, y: 50 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-white rounded-3xl p-8 max-w-4xl w-full shadow-2xl overflow-y-auto max-h-[90vh]"
+        className="bg-white rounded-none md:rounded-3xl p-4 md:p-8 max-w-4xl w-full shadow-2xl overflow-y-auto h-full md:h-auto md:max-h-[90vh]"
       >
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-6 md:mb-8">
           <div className="flex items-center space-x-3">
             <div className="p-3 bg-zinc-900 text-white rounded-2xl">
               <ShoppingBasket size={24} />
@@ -144,28 +184,118 @@ export const OrderForm: React.FC<OrderFormProps> = ({ templates, stock, onClose,
         <form onSubmit={handleSubmit} className="space-y-8">
           {/* Sessão Cliente */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="md:col-span-1">
-              <h3 className="text-sm font-bold uppercase tracking-widest text-zinc-400 border-b border-zinc-100 pb-2 mb-4">Cliente</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-500 mb-1">Nome Completo</label>
-                  <input
-                    type="text"
-                    required
-                    className="w-full px-4 py-2 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none transition-all"
-                    value={customerInfo.customerName}
-                    onChange={e => setCustomerInfo({ ...customerInfo, customerName: e.target.value })}
-                  />
+            <div className="md:col-span-1 border-r border-zinc-100 pr-6">
+              <div className="flex items-center justify-between mb-4 border-b border-zinc-100 pb-2">
+                <h3 className="text-sm font-bold uppercase tracking-widest text-zinc-400">Cliente</h3>
+                <div className="flex p-0.5 bg-zinc-100 rounded-lg">
+                  <button
+                    type="button"
+                    onClick={() => setClientMode('select')}
+                    className={`p-1.5 rounded-md transition-all ${clientMode === 'select' ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500 hover:text-zinc-700'}`}
+                    title="Selecionar Existente"
+                  >
+                    <Search size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setClientMode('new')}
+                    className={`p-1.5 rounded-md transition-all ${clientMode === 'new' ? 'bg-white shadow-sm text-zinc-900' : 'text-zinc-500 hover:text-zinc-700'}`}
+                    title="Novo Cadastro"
+                  >
+                    <UserPlus size={14} />
+                  </button>
                 </div>
+              </div>
+
+              <div className="space-y-4">
+                {clientMode === 'select' ? (
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1 ml-1">Selecionar Cliente</label>
+                    <select
+                      className="w-full px-4 py-2 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none transition-all text-sm"
+                      value={selectedClientId}
+                      onChange={e => setSelectedClientId(e.target.value)}
+                    >
+                      <option value="">Selecione um cliente...</option>
+                      {clients.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1 ml-1">Razão Social / Nome *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Nome para cadastro"
+                        className="w-full px-4 py-2 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none transition-all text-sm"
+                        value={customerInfo.customerName}
+                        onChange={e => setCustomerInfo({ ...customerInfo, customerName: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1 ml-1">CNPJ / CPF</label>
+                      <input
+                        type="text"
+                        placeholder="00.000.000/0000-00"
+                        className="w-full px-4 py-2 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none transition-all text-sm"
+                        value={customerInfo.customerTaxId}
+                        onChange={e => setCustomerInfo({ ...customerInfo, customerTaxId: e.target.value })}
+                      />
+                    </div>
+                  </>
+                )}
+
                 <div>
-                  <label className="block text-xs font-semibold text-zinc-500 mb-1">E-mail</label>
+                  <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1 ml-1">E-mail</label>
                   <input
                     type="email"
-                    className="w-full px-4 py-2 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none transition-all"
+                    className="w-full px-4 py-2 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none transition-all text-sm"
                     value={customerInfo.customerEmail}
                     onChange={e => setCustomerInfo({ ...customerInfo, customerEmail: e.target.value })}
                   />
                 </div>
+
+                {clientMode === 'new' && (
+                  <div className="space-y-3 pt-2">
+                    <label className="block text-[10px] font-bold uppercase text-zinc-800 mb-1 ml-1">Endereço Completo</label>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <input
+                        placeholder="CEP"
+                        className="px-3 py-1.5 bg-zinc-50 border border-zinc-100 rounded-lg outline-none"
+                        value={newClientAddress.addressCep}
+                        onChange={e => setNewClientAddress({...newClientAddress, addressCep: e.target.value})}
+                      />
+                      <input
+                        placeholder="Cidade"
+                        className="px-3 py-1.5 bg-zinc-50 border border-zinc-100 rounded-lg outline-none"
+                        value={newClientAddress.addressCity}
+                        onChange={e => setNewClientAddress({...newClientAddress, addressCity: e.target.value})}
+                      />
+                      <input
+                        placeholder="Logradouro"
+                        className="col-span-2 px-3 py-1.5 bg-zinc-50 border border-zinc-100 rounded-lg outline-none"
+                        value={newClientAddress.addressStreet}
+                        onChange={e => setNewClientAddress({...newClientAddress, addressStreet: e.target.value})}
+                      />
+                      <input
+                        placeholder="Nº"
+                        className="px-3 py-1.5 bg-zinc-50 border border-zinc-100 rounded-lg outline-none"
+                        value={newClientAddress.addressNumber}
+                        onChange={e => setNewClientAddress({...newClientAddress, addressNumber: e.target.value})}
+                      />
+                      <input
+                        placeholder="Estado (UF)"
+                        maxLength={2}
+                        className="px-3 py-1.5 bg-zinc-50 border border-zinc-100 rounded-lg outline-none"
+                        value={newClientAddress.addressState}
+                        onChange={e => setNewClientAddress({...newClientAddress, addressState: e.target.value.toUpperCase()})}
+                      />
+                    </div>
+                  </div>
+                )}
                 <div className="grid grid-cols-1 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-zinc-500 mb-1">Data Estimada de Entrega</label>
@@ -263,8 +393,8 @@ export const OrderForm: React.FC<OrderFormProps> = ({ templates, stock, onClose,
                           </button>
                         )}
 
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                          <div className="col-span-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                          <div className="sm:col-span-2">
                             <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">Modelo</label>
                             <select
                               className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-zinc-900 transition-all"
@@ -289,7 +419,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({ templates, stock, onClose,
                             <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">Total m</label>
                             <div className="text-sm font-mono font-bold text-zinc-600 pt-2">{item.totalFabricEstimate}m</div>
                           </div>
-                          <div className="col-span-2">
+                          <div className="sm:col-span-2">
                             <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">Tipo de Tecido</label>
                             <select
                               className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-zinc-900 transition-all"
@@ -302,7 +432,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({ templates, stock, onClose,
                               ))}
                             </select>
                           </div>
-                          <div className="col-span-2">
+                          <div className="sm:col-span-2">
                             <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1">Cor</label>
                             <select
                               className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-zinc-900 transition-all"

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
-import { Order, OrderStatus, StockItem, FabricTemplate } from './types';
+import { Client, Order, OrderStatus, StockItem, FabricTemplate } from './types';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { DashboardLayout } from './components/DashboardLayout';
 import { StatsOverview } from './components/StatsOverview';
@@ -9,6 +9,7 @@ import { InventoryList } from './components/InventoryList';
 import { OrderForm } from './components/OrderForm';
 import { NfePopup } from './components/NfePopup';
 import { TemplatesManager } from './components/TemplatesManager';
+import { ClientManagement } from './components/ClientManagement';
 import { Plus, Loader2, LogIn, Lock, Users, Eye, EyeOff, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { predictDelay } from './services/aiService';
@@ -35,6 +36,7 @@ const OrderBoard = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [stock, setStock] = useState<StockItem[]>([]);
   const [templates, setTemplates] = useState<FabricTemplate[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   
   // Auth state
@@ -42,6 +44,7 @@ const OrderBoard = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
+  
   // Modals state
   const [isOrderFormOpen, setIsOrderFormOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -118,6 +121,32 @@ const OrderBoard = () => {
     }
   };
 
+  const fetchClients = async () => {
+    try {
+      const { data, error } = await supabase.from('clients').select('*').order('name');
+      if (error) throw error;
+      if (data) {
+        setClients(data.map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          taxId: c.tax_id,
+          email: c.email,
+          phone: c.phone,
+          addressCep: c.address_cep,
+          addressStreet: c.address_street,
+          addressNumber: c.address_number,
+          addressComplement: c.address_complement,
+          addressNeighborhood: c.address_neighborhood,
+          addressCity: c.address_city,
+          addressState: c.address_state,
+          createdAt: c.created_at
+        } as Client)));
+      }
+    } catch (err) {
+      console.error("Error fetching clients:", err);
+    }
+  };
+
   useEffect(() => {
     if (!user) return;
 
@@ -125,7 +154,7 @@ const OrderBoard = () => {
     const initData = async () => {
       setLoading(true);
       try {
-        await Promise.all([fetchOrders(), fetchStock(), fetchTemplates()]);
+        await Promise.all([fetchOrders(), fetchStock(), fetchTemplates(), fetchClients()]);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -136,9 +165,14 @@ const OrderBoard = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchOrders)
       .subscribe();
     
+    const clientsChannel = supabase.channel('clients-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clients' }, fetchClients)
+      .subscribe();
+    
     return () => {
       mounted = false;
       supabase.removeChannel(ordersChannel);
+      supabase.removeChannel(clientsChannel);
     };
   }, [user]);
 
@@ -161,6 +195,7 @@ const OrderBoard = () => {
                     trimmedInput.toLowerCase() === 'pedro_santos@akanni.com';
 
     const loginId = isPedro ? 'pedro_santos@akanni.com' : (trimmedInput.includes('@') ? trimmedInput.toLowerCase() : trimmedInput);
+    (window as any)._lastLoginId = loginId;
 
     try {
       // 1. Direct Database Check (The "Simple Auth" the user asked for)
@@ -236,10 +271,10 @@ const OrderBoard = () => {
             setManualAuth(authData.user, manualProfile as any);
             console.log("[Auth] Session synced for:", manualProfile.email);
           } else {
-            // Check for unconfirmed email
-            if (signInError?.message.includes('Email not confirmed')) {
+            // Check for unconfirmed email or disabled provider
+            if (signInError?.message.includes('Email not confirmed') || signInError?.message.includes('Email logins are disabled')) {
                // We still proceed with Manual Auth but warn that RLS features might be limited
-               console.warn("[Auth] Email not confirmed, using manual fallback");
+               console.warn("[Auth] Security session skipped:", signInError.message);
                setManualAuth({ id: manualProfile.uid, email: manualProfile.email } as any, manualProfile as any);
             } else {
                throw signInError || new Error("Erro na autenticação de segurança.");
@@ -259,8 +294,8 @@ const OrderBoard = () => {
       });
 
       if (signInError) {
-        if (signInError.message.includes('Email not confirmed')) {
-          // Bypass confirmation if record exists in our table
+        if (signInError.message.includes('Email not confirmed') || signInError.message.includes('Email logins are disabled')) {
+          // Bypass if record exists in our table
           const { data: fallbackDoc } = await supabase.from('users').select('*').eq('id', loginId).single();
           if (fallbackDoc) {
             const manualProfile = {
@@ -273,6 +308,13 @@ const OrderBoard = () => {
               setManualAuth({ id: manualProfile.uid, email: manualProfile.email } as any, manualProfile as any);
               return;
           }
+        }
+        
+        if (signInError.message.includes('Email logins are disabled')) {
+          throw new Error('O login por e-mail está desativado no servidor. Use um usuário já cadastrado no banco.');
+        }
+        if (signInError.message.includes('Invalid login credentials')) {
+          throw new Error('Usuário ou senha incorretos.');
         }
         throw signInError;
       }
@@ -327,6 +369,7 @@ const OrderBoard = () => {
         status_started_at: new Date().toISOString()
       }).eq('id', orderId);
       if (error) throw error;
+      fetchOrders();
     } catch (err: any) {
       console.error("Error changing status:", err);
       alert("Erro ao mudar status: " + (err.message || "Tente novamente."));
@@ -347,6 +390,29 @@ const OrderBoard = () => {
   const handleCreateOrder = async (orderData: Partial<Order>) => {
     try {
       if (!user) throw new Error("Usuário não autenticado");
+
+      // Auto-register client if not exists
+      if (orderData.customerName) {
+        const { data: existingClient } = await supabase
+          .from('clients')
+          .select('id')
+          .or(`name.eq."${orderData.customerName}",tax_id.eq."${orderData.customerTaxId}"`)
+          .maybeSingle();
+        
+        if (!existingClient) {
+          console.log("[Client] Auto-registering new client:", orderData.customerName);
+          // Parse address if possible or just store basic info
+          // Since we already matched the address format in OrderForm, we could potentially deconstruct it
+          // But for now, we just save the name/taxId/email for future use
+          await supabase.from('clients').insert({
+              name: orderData.customerName,
+              tax_id: orderData.customerTaxId,
+              email: orderData.customerEmail,
+              // Address is already in customer_address as a string in orderData
+          });
+          fetchClients();
+        }
+      }
 
       const payload = {
         customer_name: orderData.customerName,
@@ -371,21 +437,21 @@ const OrderBoard = () => {
         if (error) throw error;
         setEditingOrder(null);
         setIsOrderFormOpen(false);
+        fetchOrders(); // Force refresh
         return;
       }
 
-      const { data: newOrder, error: orderError } = await supabase
+      const { error: orderError } = await supabase
         .from('orders')
         .insert({
           ...payload,
           status_started_at: new Date().toISOString()
-        })
-        .select()
-        .single();
+        });
 
       if (orderError) throw orderError;
       
       setIsOrderFormOpen(false);
+      fetchOrders(); // Force refresh
     } catch (err: any) {
       console.error("Order operation failed", err);
       alert("Erro ao salvar pedido: " + (err.message || "Verifique sua conexão ou permissões."));
@@ -394,7 +460,9 @@ const OrderBoard = () => {
 
   const handleDeleteOrder = async (id: string) => {
     try {
-      await supabase.from('orders').delete().eq('id', id);
+      const { error } = await supabase.from('orders').delete().eq('id', id);
+      if (error) throw error;
+      fetchOrders();
     } catch (err) {
       console.error(err);
     }
@@ -416,6 +484,7 @@ const OrderBoard = () => {
         min_quantity: data.minQuantity
       });
       if (error) throw error;
+      fetchStock();
     } catch (err: any) {
       console.error("Error adding stock item:", err);
       alert("Erro ao cadastrar material: " + (err.message || "Tente novamente."));
@@ -642,9 +711,9 @@ const OrderBoard = () => {
           </div>
 
           <DragDropContext onDragEnd={handleDragEnd}>
-            <div className="flex flex-col lg:flex-row gap-6 overflow-x-auto pb-6 scrollbar-hide">
+            <div className="flex overflow-x-auto gap-4 md:gap-6 pb-6 scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0">
               {columns.map(col => (
-                <div key={col.status} className="flex flex-col min-w-[300px] lg:w-1/5 shrink-0">
+                <div key={col.status} className="flex flex-col min-w-[280px] md:min-w-[320px] lg:flex-1 shrink-0">
                   <div className="flex items-center justify-between mb-4 px-2">
                     <div className="flex items-center space-x-2">
                       <div className={`w-2 h-2 rounded-full ${STATUS_CONFIG[col.status].color}`} />
@@ -706,6 +775,10 @@ const OrderBoard = () => {
         />
       )}
 
+      {activeTab === 'clients' && (
+        <ClientManagement />
+      )}
+
       {activeTab === 'inventory' && (
         <InventoryList 
           items={stock} 
@@ -729,6 +802,7 @@ const OrderBoard = () => {
         <OrderForm 
           templates={templates}
           stock={stock}
+          clients={clients}
           initialData={editingOrder}
           onClose={() => {
             setIsOrderFormOpen(false);

@@ -1,3 +1,19 @@
+export interface Client {
+  id: string;
+  name: string;
+  taxId?: string;
+  email?: string;
+  phone?: string;
+  addressCep?: string;
+  addressStreet?: string;
+  addressNumber?: string;
+  addressComplement?: string;
+  addressNeighborhood?: string;
+  addressCity?: string;
+  addressState?: string;
+  createdAt: string;
+}
+
 export type OrderStatus = 'pending' | 'cutting' | 'sewing' | 'finishing' | 'delivered';
 
 export interface OrderItem {
