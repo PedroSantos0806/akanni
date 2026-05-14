@@ -19,7 +19,9 @@ const ISSUER_INFO = {
 
 export const NfePopup: React.FC<NfePopupProps> = ({ order, onClose, onSuccess }) => {
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState<'preview' | 'success'>('preview');
+  const [step, setStep] = useState<'preview' | 'success' | 'error'>('preview');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [nfeResult, setNfeResult] = useState<any>(null);
   
   if (!order) return null;
 
@@ -28,13 +30,38 @@ export const NfePopup: React.FC<NfePopupProps> = ({ order, onClose, onSuccess })
 
   const handleSubmit = async () => {
     setLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    setLoading(false);
-    setStep('success');
-    setTimeout(() => {
+    setErrorMsg(null);
+    try {
+      const response = await fetch('/api/nfe/emit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order, issuer: ISSUER_INFO })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.mensagem || data.error || "Erro ao emitir nota fiscal");
+      }
+
+      setNfeResult(data);
+      setStep('success');
       onSuccess(order.id);
-      onClose();
-    }, 2500);
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(err.message);
+      setStep('error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePrintFinal = () => {
+    if (nfeResult?.url_pdf) {
+      window.open(nfeResult.url_pdf, '_blank');
+    } else {
+      window.print();
+    }
   };
 
   return (
@@ -160,7 +187,7 @@ export const NfePopup: React.FC<NfePopupProps> = ({ order, onClose, onSuccess })
                 </button>
               </div>
             </div>
-          ) : (
+          ) : step === 'success' ? (
             <div className="py-8 flex flex-col items-center">
               <motion.div
                 initial={{ scale: 0 }}
@@ -178,22 +205,22 @@ export const NfePopup: React.FC<NfePopupProps> = ({ order, onClose, onSuccess })
                  </div>
                  <div className="p-4 bg-white space-y-2">
                     <div className="flex justify-between border-b pb-2">
-                      <span className="font-bold">Nº da Nota: 000.452.128</span>
+                      <span className="font-bold">Nº da Nota: {nfeResult?.numero || "000.452.128"}</span>
                       <span>Emissão: {currentDate}</span>
                     </div>
                     <div className="text-[10px] text-zinc-500">
-                      Chave de Acesso: 3524 0512 3456 7800 0190 5500 1000 4521 2810 0987 6543
+                      Chave de Acesso: {nfeResult?.chave_nfe || "3524 0512 3456 7800 0190 5500 1000 4521 2810 0987 6543"}
                     </div>
                  </div>
               </div>
 
               <div className="flex items-center space-x-3 w-full">
                 <button 
-                  onClick={() => window.print()}
+                  onClick={handlePrintFinal}
                   className="flex-1 px-6 py-3 bg-zinc-900 text-white rounded-xl font-bold hover:bg-zinc-800 transition-colors flex items-center justify-center"
                 >
                   <Printer size={18} className="mr-2" />
-                  Imprimir Nota Fiscal
+                  Abrir PDF Oficial
                 </button>
                 <button 
                   onClick={onClose}
@@ -202,6 +229,22 @@ export const NfePopup: React.FC<NfePopupProps> = ({ order, onClose, onSuccess })
                   Concluir
                 </button>
               </div>
+            </div>
+          ) : (
+            <div className="py-12 flex flex-col items-center">
+              <div className="w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center mb-4">
+                <X size={32} />
+              </div>
+              <h3 className="text-xl font-bold text-zinc-900 mb-2">Erro na Emissão</h3>
+              <p className="text-zinc-500 text-center max-w-sm mb-8 leading-relaxed">
+                {errorMsg}
+              </p>
+              <button 
+                onClick={() => setStep('preview')}
+                className="px-8 py-3 bg-zinc-900 text-white rounded-xl font-bold hover:bg-zinc-800 transition-colors"
+              >
+                Voltar e Corrigir
+              </button>
             </div>
           )}
         </div>
