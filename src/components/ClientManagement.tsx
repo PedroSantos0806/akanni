@@ -12,7 +12,10 @@ import {
   Building2,
   FileText,
   Save,
-  X
+  X,
+  SearchIcon,
+  MapPinned,
+  Loader2
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Client } from '../types';
@@ -24,6 +27,39 @@ export const ClientManagement = () => {
   const [search, setSearch] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [isCepLoading, setIsCepLoading] = useState(false);
+
+  const formatTaxId = (value: string) => {
+    const val = value.replace(/\D/g, '');
+    if (val.length <= 11) {
+      return val.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    }
+    return val.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+  };
+
+  const handleCepBlur = async (e: React.FocusEvent<HTMLInputElement>) => {
+    const cep = e.target.value.replace(/\D/g, '');
+    if (cep.length !== 8) return;
+
+    setIsCepLoading(true);
+    try {
+      const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+      const data = await response.json();
+      if (!data.erro) {
+        setFormData(prev => ({
+          ...prev,
+          addressStreet: data.logradouro || '',
+          addressNeighborhood: data.bairro || '',
+          addressCity: data.localidade || '',
+          addressState: data.uf || ''
+        }));
+      }
+    } catch (err) {
+      console.error("CEP fetch failed", err);
+    } finally {
+      setIsCepLoading(false);
+    }
+  };
   
   const [formData, setFormData] = useState({
     name: '',
@@ -314,12 +350,13 @@ export const ClientManagement = () => {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-zinc-700 mb-1.5">CNPJ / CPF</label>
+                      <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1.5 ml-1 tracking-widest">CNPJ / CPF</label>
                       <input 
                         type="text" 
-                        className="w-full bg-zinc-50 border-zinc-200 rounded-xl focus:ring-zinc-900 focus:border-zinc-900"
+                        placeholder="000.000.000-00"
+                        className="w-full bg-zinc-50 border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900 h-12 transition-all font-mono text-sm"
                         value={formData.taxId}
-                        onChange={(e) => setFormData({...formData, taxId: e.target.value})}
+                        onChange={(e) => setFormData({...formData, taxId: formatTaxId(e.target.value)})}
                       />
                     </div>
                     <div>
@@ -342,69 +379,81 @@ export const ClientManagement = () => {
                     </div>
                   </div>
 
-                  <div className="pt-4 border-t border-zinc-100">
-                    <h3 className="text-sm font-bold text-zinc-900 uppercase tracking-wider mb-4">Endereço de Faturamento</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-zinc-700 mb-1.5">CEP</label>
+                  <div className="pt-6 border-t border-zinc-100">
+                    <div className="flex items-center space-x-2 mb-6">
+                      <MapPinned size={16} className="text-zinc-400" />
+                      <h3 className="text-xs font-black text-zinc-900 uppercase tracking-widest">Endereço de Entrega/Faturamento</h3>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+                      <div className="md:col-span-2 relative">
+                        <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1.5 ml-1 tracking-widest">CEP</label>
                         <input 
                           type="text" 
-                          className="w-full bg-zinc-50 border-zinc-200 rounded-xl focus:ring-zinc-900 focus:border-zinc-900"
+                          placeholder="00000-000"
+                          className="w-full bg-zinc-50 border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900 h-12 transition-all font-mono"
                           value={formData.addressCep}
+                          onBlur={handleCepBlur}
                           onChange={(e) => setFormData({...formData, addressCep: e.target.value})}
                         />
+                        {isCepLoading && (
+                          <Loader2 size={16} className="absolute right-3 top-[34px] animate-spin text-zinc-400" />
+                        )}
                       </div>
-                      <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-zinc-700 mb-1.5">Logradouro</label>
+                      <div className="md:col-span-4">
+                        <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1.5 ml-1 tracking-widest">Logradouro</label>
                         <input 
                           type="text" 
-                          className="w-full bg-zinc-50 border-zinc-200 rounded-xl focus:ring-zinc-900 focus:border-zinc-900"
+                          placeholder="Rua, Avenida..."
+                          className="w-full bg-zinc-50 border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900 h-12 transition-all"
                           value={formData.addressStreet}
                           onChange={(e) => setFormData({...formData, addressStreet: e.target.value})}
                         />
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-zinc-700 mb-1.5">Número</label>
+                      <div className="md:col-span-2">
+                        <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1.5 ml-1 tracking-widest">Número</label>
                         <input 
                           type="text" 
-                          className="w-full bg-zinc-50 border-zinc-200 rounded-xl focus:ring-zinc-900 focus:border-zinc-900"
+                          placeholder="Nº"
+                          className="w-full bg-zinc-50 border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900 h-12 transition-all"
                           value={formData.addressNumber}
                           onChange={(e) => setFormData({...formData, addressNumber: e.target.value})}
                         />
                       </div>
-                      <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-zinc-700 mb-1.5">Complemento</label>
+                      <div className="md:col-span-4">
+                        <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1.5 ml-1 tracking-widest">Complemento</label>
                         <input 
                           type="text" 
-                          className="w-full bg-zinc-50 border-zinc-200 rounded-xl focus:ring-zinc-900 focus:border-zinc-900"
+                          placeholder="Sala, Apto, Bloco..."
+                          className="w-full bg-zinc-50 border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900 h-12 transition-all"
                           value={formData.addressComplement}
                           onChange={(e) => setFormData({...formData, addressComplement: e.target.value})}
                         />
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-zinc-700 mb-1.5">Bairro</label>
+                      <div className="md:col-span-2">
+                        <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1.5 ml-1 tracking-widest">Bairro</label>
                         <input 
                           type="text" 
-                          className="w-full bg-zinc-50 border-zinc-200 rounded-xl focus:ring-zinc-900 focus:border-zinc-900"
+                          className="w-full bg-zinc-50 border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900 h-12 transition-all"
                           value={formData.addressNeighborhood}
                           onChange={(e) => setFormData({...formData, addressNeighborhood: e.target.value})}
                         />
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-zinc-700 mb-1.5">Cidade</label>
+                      <div className="md:col-span-3">
+                        <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1.5 ml-1 tracking-widest">Cidade</label>
                         <input 
                           type="text" 
-                          className="w-full bg-zinc-50 border-zinc-200 rounded-xl focus:ring-zinc-900 focus:border-zinc-900"
+                          className="w-full bg-zinc-50 border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900 h-12 transition-all"
                           value={formData.addressCity}
                           onChange={(e) => setFormData({...formData, addressCity: e.target.value})}
                         />
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-zinc-700 mb-1.5">Estado (UF)</label>
+                      <div className="md:col-span-1">
+                        <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1.5 ml-1 tracking-widest">UF</label>
                         <input 
                           type="text" 
                           maxLength={2}
-                          className="w-full bg-zinc-50 border-zinc-200 rounded-xl focus:ring-zinc-900 focus:border-zinc-900"
+                          className="w-full bg-zinc-50 border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 focus:border-zinc-900 h-12 transition-all uppercase text-center"
                           value={formData.addressState}
                           onChange={(e) => setFormData({...formData, addressState: e.target.value.toUpperCase()})}
                         />

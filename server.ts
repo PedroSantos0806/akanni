@@ -10,19 +10,22 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
-  const FOCUS_TOKEN = process.env.FOCUS_NFE_TOKEN;
-  const FOCUS_ENV = process.env.FOCUS_NFE_ENVIRONMENT || 'sandbox';
+  const FOCUS_TOKEN = process.env.FOCUS_NFE_TOKEN?.trim();
+  const FOCUS_ENV = (process.env.FOCUS_NFE_ENVIRONMENT || 'sandbox').trim();
   const BASE_URL = FOCUS_ENV === 'production' 
     ? 'https://api.focusnfe.com.br' 
     : 'https://homologacao.focusnfe.com.br';
 
+  console.log(`[FocusNFe] Configured for ${FOCUS_ENV} environment.`);
+
   // API Route for NF-e Emission
   app.post("/api/nfe/emit", async (req, res) => {
     try {
-      if (!FOCUS_TOKEN) {
-        return res.status(500).json({ error: "FocusNFe Token não configurado no servidor." });
+      if (!FOCUS_TOKEN || FOCUS_TOKEN === "") {
+        return res.status(500).json({ error: "FocusNFe Token não configurado ou vazio no Secrets." });
       }
 
       const { order, issuer } = req.body;
@@ -67,13 +70,29 @@ async function startServer() {
         auth: {
           username: FOCUS_TOKEN,
           password: ""
-        }
+        },
+        timeout: 30000 // 30s timeout
       });
 
+      console.log("[FocusNFe] Success:", response.data);
       res.json(response.data);
     } catch (error: any) {
-      console.error("[FocusNFe] Error:", error.response?.data || error.message);
-      res.status(error.response?.status || 500).json(error.response?.data || { error: "Erro interno ao emitir NF-e" });
+      const errorData = error.response?.data || error.message;
+      console.error("[FocusNFe] Error Detail:", JSON.stringify(errorData, null, 2));
+      
+      // Handle specific FocusNFe errors
+      if (error.response?.status === 422) {
+        return res.status(422).json({ 
+          error: "Dados inválidos", 
+          mensagem: errorData.mensagem || "Verifique os dados do cliente e da empresa.",
+          erros: errorData.erros 
+        });
+      }
+
+      res.status(error.response?.status || 500).json({ 
+        error: "Erro na comunicação com FocusNFe",
+        details: errorData 
+      });
     }
   });
 
@@ -92,6 +111,11 @@ async function startServer() {
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
+  });
+
+  // 404 for API routes to prevent SPA fallback
+  app.use("/api/*", (req, res) => {
+    res.status(404).json({ error: "Endpoint não encontrado" });
   });
 
   // Vite middleware for development

@@ -12,7 +12,9 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({ orders, stock }) =
   const stats = useMemo(() => {
     const pending = orders.filter(o => o.status !== 'delivered').length;
     const delivered = orders.filter(o => o.status === 'delivered').length;
-    const delayed = orders.filter(o => o.isDelayed).length;
+    const delayed = orders.filter(o => 
+      o.isDelayed || (o.status !== 'delivered' && new Date(o.deliveryDate) < new Date())
+    ).length;
     const lowStock = stock.filter(s => s.quantity <= s.minQuantity).length;
 
     const totalActiveUnits = orders
@@ -28,9 +30,17 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({ orders, stock }) =
   }, [orders, stock]);
 
   const chartData = useMemo(() => {
-    // Group by shirts type/status
+    const STATUS_LABELS: Record<string, string> = {
+      pending: 'Pendentes',
+      cutting: 'Corte',
+      sewing: 'Costura',
+      finishing: 'Acabamento',
+      delivered: 'Entregue'
+    };
+
     const statusCounts = orders.reduce((acc, order) => {
-      acc[order.status] = (acc[order.status] || 0) + 1;
+      const label = STATUS_LABELS[order.status] || order.status;
+      acc[label] = (acc[label] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
 

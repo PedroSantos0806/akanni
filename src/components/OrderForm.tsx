@@ -32,6 +32,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({ templates, stock, clients,
     customerName: initialData?.customerName || '',
     customerEmail: initialData?.customerEmail || '',
     customerTaxId: initialData?.customerTaxId || '',
+    customerPhone: initialData?.customerPhone || '',
     customerAddress: initialData?.customerAddress || '',
     deliveryDate: initialData?.deliveryDate || new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     designImages: initialData?.designImages || [] as string[],
@@ -57,6 +58,7 @@ export const OrderForm: React.FC<OrderFormProps> = ({ templates, stock, clients,
           customerName: client.name,
           customerEmail: client.email || '',
           customerTaxId: client.taxId || '',
+          customerPhone: client.phone || '',
           customerAddress: client.addressStreet ? 
             `${client.addressStreet}, ${client.addressNumber}${client.addressComplement ? ', ' + client.addressComplement : ''}, ${client.addressNeighborhood}, ${client.addressCity}/${client.addressState} - CEP: ${client.addressCep}` : ''
         }));
@@ -147,7 +149,8 @@ export const OrderForm: React.FC<OrderFormProps> = ({ templates, stock, clients,
 
     const finalCustomerInfo = { ...customerInfo };
     if (clientMode === 'new') {
-      finalCustomerInfo.customerAddress = `${newClientAddress.addressStreet}, ${newClientAddress.addressNumber}${newClientAddress.addressComplement ? ', ' + newClientAddress.addressComplement : ''}, ${newClientAddress.addressNeighborhood}, ${newClientAddress.addressCity}/${newClientAddress.addressState} - CEP: ${newClientAddress.addressCep}`;
+      const addr = newClientAddress;
+      finalCustomerInfo.customerAddress = addr.addressStreet ? `${addr.addressStreet}, ${addr.addressNumber}${addr.addressComplement ? ', ' + addr.addressComplement : ''}, ${addr.addressNeighborhood}, ${addr.addressCity}/${addr.addressState} - CEP: ${addr.addressCep}` : '';
     }
 
     onSubmit({
@@ -258,6 +261,17 @@ export const OrderForm: React.FC<OrderFormProps> = ({ templates, stock, clients,
                   />
                 </div>
 
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-zinc-400 mb-1 ml-1">Telefone / WhatsApp</label>
+                  <input
+                    type="tel"
+                    placeholder="(00) 00000-0000"
+                    className="w-full px-4 py-2 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-zinc-900 outline-none transition-all text-sm"
+                    value={customerInfo.customerPhone}
+                    onChange={e => setCustomerInfo({ ...customerInfo, customerPhone: e.target.value })}
+                  />
+                </div>
+
                 {clientMode === 'new' && (
                   <div className="space-y-3 pt-2">
                     <label className="block text-[10px] font-bold uppercase text-zinc-800 mb-1 ml-1">Endereço Completo</label>
@@ -266,7 +280,27 @@ export const OrderForm: React.FC<OrderFormProps> = ({ templates, stock, clients,
                         placeholder="CEP"
                         className="px-3 py-1.5 bg-zinc-50 border border-zinc-100 rounded-lg outline-none"
                         value={newClientAddress.addressCep}
-                        onChange={e => setNewClientAddress({...newClientAddress, addressCep: e.target.value})}
+                        onChange={async (e) => {
+                          const cepValue = e.target.value;
+                          setNewClientAddress({...newClientAddress, addressCep: cepValue});
+                          const cleanCep = cepValue.replace(/\D/g, '');
+                          if (cleanCep.length === 8) {
+                            try {
+                              const res = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+                              const data = await res.json();
+                              if (!data.erro) {
+                                setNewClientAddress(prev => ({
+                                  ...prev,
+                                  addressCep: cepValue,
+                                  addressStreet: data.logradouro || '',
+                                  addressNeighborhood: data.bairro || '',
+                                  addressCity: data.localidade || '',
+                                  addressState: data.uf || ''
+                                }));
+                              }
+                            } catch (e) {}
+                          }
+                        }}
                       />
                       <input
                         placeholder="Cidade"

@@ -64,6 +64,7 @@ const OrderBoard = () => {
           customerEmail: o.customer_email || '',
           customerTaxId: o.customer_tax_id || '',
           customerAddress: o.customer_address || '',
+          customerPhone: o.customer_phone || '',
           status: o.status || 'pending',
           statusStartedAt: o.status_started_at || new Date().toISOString(),
           items: Array.isArray(o.items) ? o.items.map((i: any) => ({
@@ -202,7 +203,7 @@ const OrderBoard = () => {
       const { data: userDoc, error: dbError } = await supabase
         .from('users')
         .select('*')
-        .or(`id.eq.${loginId},email.eq.${loginId},username.eq.${trimmedInput}`)
+        .or(`id.eq."${loginId}",email.eq."${loginId}",username.eq."${trimmedInput}"`)
         .single();
 
       // Bootstrap for Pedro Santos if DB is empty
@@ -324,23 +325,6 @@ const OrderBoard = () => {
     }
   };
 
-  const handleResetPassword = async () => {
-    if (!email) {
-      setAuthError('Digite seu e-mail/usuário para receber o link de redefinição.');
-      return;
-    }
-    const finalEmail = email.includes('@') ? email : `${email}@akanni.com`;
-
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(finalEmail);
-      if (error) throw error;
-      alert(`Um link de redefinição foi enviado para ${finalEmail}. Verifique sua caixa de entrada.`);
-    } catch (err: any) {
-      console.error(err);
-      setAuthError('Erro ao enviar e-mail de redefinição.');
-    }
-  };
-
   const handleCreateTemplate = async (name: string, consumption: number) => {
     try {
       const { error } = await supabase.from('templates').insert({ name, fabric_consumption: consumption });
@@ -419,6 +403,7 @@ const OrderBoard = () => {
         customer_email: orderData.customerEmail,
         customer_tax_id: orderData.customerTaxId || '',
         customer_address: orderData.customerAddress || '',
+        customer_phone: orderData.customerPhone || '',
         items: (orderData.items || []).map(i => ({
             ...i,
             quantity: Number(i.quantity) || 0,
@@ -649,13 +634,9 @@ const OrderBoard = () => {
             </button>
           </form>
 
-          <button 
-            type="button"
-            onClick={handleResetPassword}
-            className="mt-6 text-zinc-400 text-sm hover:text-zinc-600 transition-colors"
-          >
-            Esqueci minha senha
-          </button>
+          <p className="mt-8 text-zinc-400 text-[10px] uppercase font-bold tracking-widest leading-relaxed">
+            Caso tenha esquecido sua senha,<br />entre em contato com o Administrador.
+          </p>
         </div>
       </div>
     );
@@ -698,8 +679,8 @@ const OrderBoard = () => {
         <div className="space-y-8">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-2xl font-bold text-zinc-900">Quadro de Produção</h2>
-              <p className="text-zinc-500 text-sm">Arraste os pedidos para mudar o status</p>
+              <h2 className="text-2xl font-bold text-zinc-900">PEDIDOS</h2>
+              <p className="text-zinc-500 text-sm">Gerencie o fluxo de produção</p>
             </div>
             <button
               onClick={() => setIsOrderFormOpen(true)}
@@ -744,10 +725,6 @@ const OrderBoard = () => {
                                 <KanbanCard 
                                   order={order} 
                                   onStatusChange={handleStatusChange}
-                                  onClick={async (order) => {
-                                    const prediction = await predictDelay(order, order.status);
-                                    alert(`Insight IA Akanni: ${prediction}`);
-                                  }}
                                   onIssueNfe={setNfeOrder}
                                   onEdit={handleEditOrder}
                                   onDelete={handleDeleteOrder}

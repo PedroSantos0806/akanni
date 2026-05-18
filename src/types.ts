@@ -41,6 +41,7 @@ export interface Order {
   updatedAt: any; // Firestore timestamp
   photos: string[];
   notes?: string;
+  customerPhone?: string;
   isDelayed: boolean;
   nfeIssued: boolean;
 }

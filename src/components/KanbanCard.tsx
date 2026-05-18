@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Calendar, User, ShoppingBag, AlertCircle, ArrowRight, ArrowLeft, Image as ImageIcon, FileText, AlertTriangle, Edit2, Trash2 } from 'lucide-react';
+import { Calendar, User, ShoppingBag, AlertCircle, ArrowRight, ArrowLeft, Image as ImageIcon, FileText, AlertTriangle, Edit2, Trash2, MessageCircle } from 'lucide-react';
 import { Order, OrderStatus } from '../types';
 import { format, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -9,13 +9,12 @@ import { STATUS_CONFIG } from '../constants';
 interface KanbanCardProps {
   order: Order;
   onStatusChange: (orderId: string, newStatus: OrderStatus) => void;
-  onClick: (order: Order) => void;
   onIssueNfe: (order: Order) => void;
   onEdit: (order: Order) => void;
   onDelete: (orderId: string) => void;
 }
 
-export const KanbanCard: React.FC<KanbanCardProps> = ({ order, onStatusChange, onClick, onIssueNfe, onEdit, onDelete }) => {
+export const KanbanCard: React.FC<KanbanCardProps> = ({ order, onStatusChange, onIssueNfe, onEdit, onDelete }) => {
   const statuses: OrderStatus[] = ['pending', 'cutting', 'sewing', 'finishing', 'delivered'];
   const currentIndex = statuses.indexOf(order.status);
 
@@ -29,13 +28,30 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({ order, onStatusChange, o
     return days > maxDays ? days - maxDays : 0;
   }, [order.status, order.statusStartedAt, order.createdAt]);
 
+  const handleWhatsAppStatus = () => {
+    if (!order.customerPhone) {
+      alert("Número de telefone não cadastrado para este cliente.");
+      return;
+    }
+    const statusTranslate: Record<string, string> = {
+      pending: 'Pendente',
+      cutting: 'Corte',
+      sewing: 'Costura',
+      finishing: 'Acabamento',
+      delivered: 'Despachado'
+    };
+    const message = `Olá ${order.customerName}! O seu pedido na Akanni Confecções está com o status de: *${statusTranslate[order.status] || order.status}*.`;
+    const encodedMessage = encodeURIComponent(message);
+    const phone = order.customerPhone.replace(/\D/g, '');
+    window.open(`https://wa.me/55${phone}?text=${encodedMessage}`, '_blank');
+  };
+
   return (
     <motion.div
       layoutId={order.id}
       className={`bg-white rounded-2xl border-l-[6px] shadow-sm hover:shadow-xl transition-all cursor-pointer group flex flex-col overflow-hidden ${
         delayInStatus > 0 ? 'border-red-500 ring-1 ring-red-100' : 'border-zinc-900 border-opacity-20'
       }`}
-      onClick={() => onClick(order)}
     >
       {order.designImages && order.designImages.length > 0 && (
         <div className="h-32 w-full overflow-hidden bg-zinc-50 border-b border-zinc-100 relative flex group">
@@ -135,6 +151,14 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({ order, onStatusChange, o
           </div>
 
           <div className="flex items-center space-x-1" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={handleWhatsAppStatus}
+              className="p-1.5 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-colors"
+              title="Enviar Status via WhatsApp"
+            >
+              <MessageCircle size={14} />
+            </button>
+
             {isNfeRequired && !order.nfeIssued && (
               <button
                 onClick={() => onIssueNfe(order)}
